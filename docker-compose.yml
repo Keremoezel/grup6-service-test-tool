@@ -1,0 +1,125 @@
+networks:
+  grup6-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+
+  # ─── PostgreSQL Veritabani ────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: grup6
+      POSTGRES_PASSWORD: grup6pass
+      POSTGRES_DB: grup6db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - grup6-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grup6 -d grup6db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── Microservice 1: Chaos Service ───────────────────────────
+  chaos-service:
+    build:
+      context: ./chaos-service
+    container_name: chaos-service
+    ports:
+      - "8081:8081"
+    networks:
+      - grup6-network
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/grup6db
+      - SPRING_DATASOURCE_USERNAME=grup6
+      - SPRING_DATASOURCE_PASSWORD=grup6pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/api/chaos/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Microservice 2: Security Service ────────────────────────
+  security-service:
+    build:
+      context: ./security-service
+    container_name: security-service
+    ports:
+      - "8082:8082"
+    networks:
+      - grup6-network
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/grup6db
+      - SPRING_DATASOURCE_USERNAME=grup6
+      - SPRING_DATASOURCE_PASSWORD=grup6pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/api/security/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Microservice 3: Report Service ──────────────────────────
+  report-service:
+    build:
+      context: ./report-service
+    container_name: report-service
+    ports:
+      - "8083:8083"
+    networks:
+      - grup6-network
+    environment:
+      - CHAOS_SERVICE_URL=http://chaos-service:8081
+      - SECURITY_SERVICE_URL=http://security-service:8082
+    depends_on:
+      chaos-service:
+        condition: service_healthy
+      security-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8083/api/report/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── UI Service: React Dashboard ─────────────────────────────
+  ui-service:
+    build:
+      context: ./ui-service
+      args:
+        - VITE_CHAOS_URL=http://localhost:8081
+        - VITE_SECURITY_URL=http://localhost:8082
+        - VITE_REPORT_URL=http://localhost:8083
+        - VITE_CHAOS_WS_URL=http://localhost:8081/ws
+    container_name: ui-service
+    ports:
+      - "3000:3000"
+    networks:
+      - grup6-network
+    depends_on:
+      chaos-service:
+        condition: service_healthy
+      security-service:
+        condition: service_healthy
+      report-service:
+        condition: service_healthy
+    restart: unless-stopped
