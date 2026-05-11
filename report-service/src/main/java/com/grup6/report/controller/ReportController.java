@@ -2,8 +2,11 @@ package com.grup6.report.controller;
 
 import com.grup6.report.model.Report;
 import com.grup6.report.service.ReportService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.grup6.report.model.ReportEntity;
 
 import java.util.Map;
 
@@ -58,6 +61,25 @@ public class ReportController {
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         return ResponseEntity.ok(reportService.getStats());
+    }
+
+    /**
+     * Tum rapor gecmisini getir (sayfali)
+     */
+    @GetMapping("/all")
+    public ResponseEntity<Page<ReportEntity>> getAllReports(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(reportService.getPaginatedReports(PageRequest.of(page, size)));
+    }
+
+    /**
+     * Tum raporlari sil
+     */
+    @DeleteMapping("/clear")
+    public ResponseEntity<Map<String, String>> clearReports() {
+        reportService.deleteAllReports();
+        return ResponseEntity.ok(Map.of("message", "All reports cleared"));
     }
 
     /**

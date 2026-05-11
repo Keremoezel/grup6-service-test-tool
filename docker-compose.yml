@@ -92,6 +92,9 @@ services:
     environment:
       - CHAOS_SERVICE_URL=http://chaos-service:8081
       - SECURITY_SERVICE_URL=http://security-service:8082
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/grup6db
+      - SPRING_DATASOURCE_USERNAME=grup6
+      - SPRING_DATASOURCE_PASSWORD=grup6pass
     depends_on:
       chaos-service:
         condition: service_healthy

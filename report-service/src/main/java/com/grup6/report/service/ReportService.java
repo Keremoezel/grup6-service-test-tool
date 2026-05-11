@@ -16,6 +16,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import com.grup6.report.model.ReportEntity;
+import com.grup6.report.repository.ReportRepository;
 
 /**
  * Chaos ve Security servislerinden veri cekip rapor olusturan servis.
@@ -24,6 +28,7 @@ import java.util.UUID;
 public class ReportService {
 
     private final RestTemplate restTemplate;
+    private final ReportRepository repository;
 
     @Value("${chaos.service.url}")
     private String chaosServiceUrl;
@@ -31,8 +36,9 @@ public class ReportService {
     @Value("${security.service.url}")
     private String securityServiceUrl;
 
-    public ReportService(RestTemplate restTemplate) {
+    public ReportService(RestTemplate restTemplate, ReportRepository repository) {
         this.restTemplate = restTemplate;
+        this.repository = repository;
     }
 
     /**
@@ -48,13 +54,24 @@ public class ReportService {
 
         int healthScore = calculateHealthScore(chaosSummary, securitySummary);
 
-        return Report.builder()
+        Report report = Report.builder()
                 .reportId(UUID.randomUUID().toString())
                 .generatedAt(LocalDateTime.now())
                 .chaosSummary(chaosSummary)
                 .securitySummary(securitySummary)
                 .overallHealthScore(healthScore)
                 .build();
+
+        ReportEntity entity = ReportEntity.builder()
+                .reportId(report.getReportId())
+                .generatedAt(report.getGeneratedAt())
+                .chaosSummary(report.getChaosSummary())
+                .securitySummary(report.getSecuritySummary())
+                .overallHealthScore(report.getOverallHealthScore())
+                .build();
+                
+        repository.save(entity);
+        return report;
     }
 
     /**
@@ -70,6 +87,20 @@ public class ReportService {
     public SecuritySummary getSecuritySummary() {
         boolean isKilled = isServiceUnderKillChaos("security-service");
         return buildSecuritySummary(fetchSecurityScans(), isKilled);
+    }
+
+    /**
+     * Sayfali sekilde gecmis raporlari dondurur
+     */
+    public Page<ReportEntity> getPaginatedReports(Pageable pageable) {
+        return repository.findAllByOrderByGeneratedAtDesc(pageable);
+    }
+
+    /**
+     * Tum rapor gecmisini siler
+     */
+    public void deleteAllReports() {
+        repository.deleteAll();
     }
 
     /**

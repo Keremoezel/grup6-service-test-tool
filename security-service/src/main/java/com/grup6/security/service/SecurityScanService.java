@@ -10,6 +10,13 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.net.HttpURLConnection;
+import javax.net.ssl.HttpsURLConnection;
+import java.security.cert.X509Certificate;
+import java.util.stream.Collectors;
 
 /**
  * Guvenlik tarama is mantigi.
@@ -50,16 +57,38 @@ public class SecurityScanService {
     }
 
     public Map<String, Object> checkSsl(String host) {
-        boolean sslValid = random.nextInt(100) < 60;
-        boolean httpsRedirect = random.nextBoolean();
-        int daysUntilExpiry = 30 + random.nextInt(335);
+        boolean sslValid = false;
+        int daysUntilExpiry = 0;
+        String tlsVersion = "None";
+        String message = "SSL Connection Failed";
+        
+        try {
+            URL url = new URL("https://" + host);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.connect();
+            
+            tlsVersion = conn.getCipherSuite();
+            java.security.cert.Certificate[] certs = conn.getServerCertificates();
+            if (certs.length > 0 && certs[0] instanceof X509Certificate) {
+                X509Certificate x509 = (X509Certificate) certs[0];
+                long diff = x509.getNotAfter().getTime() - System.currentTimeMillis();
+                daysUntilExpiry = (int) (diff / (1000 * 60 * 60 * 24));
+                sslValid = true;
+                message = "SSL Certificate Valid";
+            }
+        } catch (Exception e) {
+            message = e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+
         return Map.of(
             "host", host,
             "sslValid", sslValid,
-            "httpsRedirect", httpsRedirect,
-            "certificateDaysRemaining", daysUntilExpiry,
-            "tlsVersion", sslValid ? "TLS 1.3" : "TLS 1.1 (zayif)",
-            "message", sslValid ? "SSL sertifikasi gecerli" : "SSL sertifikasi gecersiz veya suresi dolmak uzere"
+            "httpsRedirect", false,
+            "certificateDaysRemaining", Math.max(0, daysUntilExpiry),
+            "tlsVersion", tlsVersion,
+            "message", message
         );
     }
 
@@ -68,7 +97,15 @@ public class SecurityScanService {
         for (int[] portInfo : COMMON_PORTS) {
             int port = portInfo[0];
             boolean isRisky = portInfo[1] == 1;
-            boolean isOpen = random.nextInt(100) < 50;
+            boolean isOpen = false;
+            
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(host, port), 800);
+                isOpen = true;
+            } catch (Exception e) {
+                isOpen = false;
+            }
+            
             portResults.add(Map.of(
                 "port", port, "open", isOpen,
                 "risk", isOpen && isRisky ? "HIGH" : "LOW",
@@ -116,23 +153,101 @@ public class SecurityScanService {
     }
 
     private List<VulnerabilityEmbeddable> generateRandomVulnerabilities(String serviceName) {
-        int count = random.nextInt(6);
-        String[][] templates = {
-            {"OPEN_PORT", "CRITICAL", serviceName + " uzerinde kritik port acik (3306 - MySQL)", "Guvenlik duvari ile 3306 portunu kapat"},
-            {"WEAK_CONFIG", "HIGH", serviceName + " varsayilan kimlik bilgileri kullaniyor", "Admin sifresini degistir, MFA etkinlestir"},
-            {"SSL_ISSUE", "HIGH", serviceName + " SSL sertifikasi 30 gun icinde surecek", "SSL sertifikasini yenile"},
-            {"AUTH_MISSING", "CRITICAL", serviceName + " API kimlik dogrulama eksik", "OAuth2 veya API key ekle"},
-            {"WEAK_CONFIG", "MEDIUM", serviceName + " HTTP headers eksik (X-Frame-Options)", "Guvenlik headerlarini ekle"},
-            {"OPEN_PORT", "LOW", serviceName + " 8080 portu disariya acik", "8080 portunu dahili erisime kapat"},
-            {"SSL_ISSUE", "MEDIUM", serviceName + " eski TLS surumu kullaniyor", "TLS 1.2+ zorunlu hale getir"},
-            {"AUTH_MISSING", "HIGH", serviceName + " rate limiting uygulanmamis", "API rate limiting ekle"}
-        };
-        List<String[]> shuffled = new ArrayList<>(Arrays.asList(templates));
-        Collections.shuffle(shuffled);
-        return shuffled.stream().limit(count).map(t -> VulnerabilityEmbeddable.builder()
-                .type(VulnerabilityType.valueOf(t[0])).severity(Severity.valueOf(t[1]))
-                .description(t[2]).recommendation(t[3]).build()
-        ).collect(Collectors.toList());
+        List<VulnerabilityEmbeddable> vulns = new ArrayList<>();
+        String actualHost = serviceName.equals("target-video-service") ? "target-video-service" : serviceName;
+        if (actualHost.equals("localhost")) actualHost = "127.0.0.1";
+        
+        // Real Port Scan
+        for (int[] portInfo : COMMON_PORTS) {
+            int port = portInfo[0];
+            if (portInfo[1] == 1) { // isRisky
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress(actualHost, port), 800);
+                    vulns.add(VulnerabilityEmbeddable.builder()
+                        .type(VulnerabilityType.OPEN_PORT)
+                        .severity(port == 3306 || port == 5432 ? Severity.CRITICAL : Severity.HIGH)
+                        .description(serviceName + " uzerinde riskli port acik: " + port)
+                        .recommendation(port + " portunu firewall arkasina alin.")
+                        .build());
+                } catch (Exception e) {}
+            }
+        }
+        
+        // 1. Deep Scan - Check /api/debug (Intentional vulnerability)
+        try {
+            URL url = new URL("http://" + actualHost + ":4000/api/debug");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(1500);
+            if (conn.getResponseCode() == 200) {
+                 vulns.add(VulnerabilityEmbeddable.builder()
+                    .type(VulnerabilityType.AUTH_MISSING)
+                    .severity(Severity.CRITICAL)
+                    .description("Hedef serviste /api/debug ucu disariya acik ve hassas bilgileri sizdiriyor.")
+                    .recommendation("Debug endpoint'ini production ortaminda kapatin veya kimlik dogrulama ekleyin.")
+                    .build());
+            }
+        } catch (Exception e) {}
+
+        // 2. Deep Scan - Check /api/videos for CORS issues
+        try {
+            URL url = new URL("http://" + actualHost + ":4000/api/videos");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("OPTIONS");
+            conn.setConnectTimeout(1500);
+            conn.connect();
+            String cors = conn.getHeaderField("Access-Control-Allow-Origin");
+            if ("*".equals(cors)) {
+                 vulns.add(VulnerabilityEmbeddable.builder()
+                    .type(VulnerabilityType.WEAK_CONFIG)
+                    .severity(Severity.HIGH)
+                    .description("/api/videos CORS politikasi asiri esnek (Access-Control-Allow-Origin: *).")
+                    .recommendation("Wildcard (*) yerine sadece guvenilir domainlere izin verin.")
+                    .build());
+            }
+        } catch (Exception e) {}
+
+        // 3. Deep Scan - Check /api/health for Info Disclosure
+        try {
+            URL url = new URL("http://" + actualHost + ":4000/api/health");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(1500);
+            if (conn.getResponseCode() == 200) {
+                 java.util.Scanner s = new java.util.Scanner(conn.getInputStream()).useDelimiter("\\A");
+                 String body = s.hasNext() ? s.next() : "";
+                 if (body.contains("chaos") || body.contains("memoryUsage")) {
+                     vulns.add(VulnerabilityEmbeddable.builder()
+                        .type(VulnerabilityType.WEAK_CONFIG)
+                        .severity(Severity.MEDIUM)
+                        .description("Health endpoint gereginden fazla detay (chaos durumu vb.) ifsa ediyor.")
+                        .recommendation("Public health endpoint'lerini sadece UP/DOWN dönecek sekilde sadelestirin.")
+                        .build());
+                 }
+            }
+        } catch (Exception e) {}
+
+        // Custom check for HTTPS
+        try {
+            URL url = new URL("https://" + actualHost);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setConnectTimeout(1000);
+            conn.connect();
+        } catch (javax.net.ssl.SSLHandshakeException e) {
+             vulns.add(VulnerabilityEmbeddable.builder()
+                .type(VulnerabilityType.SSL_ISSUE)
+                .severity(Severity.HIGH)
+                .description("Gecersiz SSL sertifikasi.")
+                .recommendation("Sertifikayi yenileyin.")
+                .build());
+        } catch (Exception e) {
+             vulns.add(VulnerabilityEmbeddable.builder()
+                .type(VulnerabilityType.WEAK_CONFIG)
+                .severity(Severity.MEDIUM)
+                .description("HTTPS (Port 443) kapali veya erisilemiyor.")
+                .recommendation("Guvenlik icin TLS/SSL yapilandirilmali.")
+                .build());
+        }
+
+        return vulns;
     }
 
     private int calculateScore(List<Vulnerability> vulnerabilities) {

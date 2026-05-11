@@ -40,6 +40,8 @@ export const reportClient = {
   generate: () => reportApi.post('/api/report/generate'),
   getStats: () => reportApi.get('/api/report/stats'),
   health: () => reportApi.get('/api/report/health'),
+  getAllReports: (page = 0, size = 10) => reportApi.get(`/api/report/all?page=${page}&size=${size}`),
+  clearReports: () => reportApi.delete('/api/report/clear'),
 }
 
 // --- Scheduler API ---
