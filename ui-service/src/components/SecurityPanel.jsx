@@ -251,6 +251,7 @@ export default function SecurityPanel() {
   const [sslResult, setSslResult] = useState(null)
   const [portHost, setPortHost] = useState('localhost')
   const [portResult, setPortResult] = useState(null)
+  const [showAllScans, setShowAllScans] = useState(false)
 
   const fetchScans = async () => {
     try {
@@ -260,6 +261,18 @@ export default function SecurityPanel() {
   }
 
   useEffect(() => { fetchScans() }, [])
+
+  // De-duplicate: show only latest scan per service name (unless showAllScans)
+  const displayedScans = showAllScans
+    ? scans
+    : Object.values(
+        scans.reduce((acc, s) => {
+          if (!acc[s.serviceName] || new Date(s.timestamp) > new Date(acc[s.serviceName].timestamp)) {
+            acc[s.serviceName] = s
+          }
+          return acc
+        }, {})
+      ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
 
   const handleScan = async () => {
     if (!serviceName.trim()) { toast.error('Enter a service name'); return }
@@ -390,19 +403,33 @@ export default function SecurityPanel() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-300 flex items-center gap-2">
-            Scan History <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{scans.length}</span>
+            Scan History
+            <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{scans.length}</span>
+            {scans.length > displayedScans.length && (
+              <span className="text-xs text-indigo-400">(showing {displayedScans.length} latest)</span>
+            )}
           </h3>
-          <button onClick={fetchScans} className="flex items-center gap-1 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs border border-gray-700">
-            <RefreshCw size={11} /> Refresh
-          </button>
+          <div className="flex gap-2">
+            {scans.length > displayedScans.length && (
+              <button
+                onClick={() => setShowAllScans(v => !v)}
+                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-900/30 hover:bg-indigo-900/60 text-indigo-300 rounded-lg text-xs border border-indigo-800"
+              >
+                {showAllScans ? 'Show Latest' : `Show All (${scans.length})`}
+              </button>
+            )}
+            <button onClick={fetchScans} className="flex items-center gap-1 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs border border-gray-700">
+              <RefreshCw size={11} /> Refresh
+            </button>
+          </div>
         </div>
-        {scans.length === 0 ? (
+        {displayedScans.length === 0 ? (
           <div className="rounded-2xl border border-gray-800 bg-gray-900/60 text-center py-14 text-gray-600">
             <Shield size={36} className="mx-auto mb-3 opacity-20" />
             <p className="text-sm">No deep scans yet — click Run Scan above</p>
           </div>
         ) : (
-          scans.map(scan => <ScanCard key={scan.scanId} scan={scan} />)
+          displayedScans.map(scan => <ScanCard key={scan.scanId} scan={scan} />)
         )}
       </div>
     </div>

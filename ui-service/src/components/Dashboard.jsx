@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { chaosClient, securityClient, reportClient, schedulerClient, TARGET_VIDEO_URL } from '../api/apiClient'
-import { Activity, Shield, FileText, RefreshCw, Zap, Play, Square, Timer, Server, AlertTriangle, Globe, Skull, Clock } from 'lucide-react'
+import { Activity, Shield, FileText, RefreshCw, Zap, Play, Square, Timer, Server, AlertTriangle, Globe, Skull, Clock, RotateCcw, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function StatCard({ title, value, subtitle, colorClass, icon: Icon, alert }) {
@@ -17,6 +17,43 @@ function StatCard({ title, value, subtitle, colorClass, icon: Icon, alert }) {
           {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Health Score Explanation ─────────────────────────────────────────────────
+function HealthExplanation({ stats }) {
+  if (!stats) return null
+  const reasons = []
+  const score = stats.overallHealthScore ?? 100
+
+  if ((stats.chaosTotalEvents ?? 0) > 0) {
+    const penalty = Math.min((stats.chaosTotalEvents) * 5, 50)
+    reasons.push({ icon: '💀', text: `${stats.chaosTotalEvents} chaos attack(s) detected — score penalty: -${penalty}pts`, color: 'text-red-400' })
+  }
+  if ((stats.criticalVulnerabilities ?? 0) > 0) {
+    const penalty = stats.criticalVulnerabilities * 15
+    reasons.push({ icon: '⚠️', text: `${stats.criticalVulnerabilities} critical vulnerability found — penalty: -${penalty}pts`, color: 'text-orange-400' })
+  }
+  if ((stats.securityAverageScore ?? 100) < 80) {
+    const deficit = 80 - stats.securityAverageScore
+    reasons.push({ icon: '🔓', text: `Security score ${stats.securityAverageScore}/100 is below threshold (80) — penalty: -${Math.round(deficit * 0.3)}pts`, color: 'text-amber-400' })
+  }
+  if (reasons.length === 0 && score >= 70) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-green-400 px-1">
+        <span>✓</span><span>System operating normally — no active threats detected</span>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3 space-y-1.5">
+      <p className="text-xs text-gray-600 uppercase tracking-wider font-mono mb-2">Why is health low?</p>
+      {reasons.map((r, i) => (
+        <div key={i} className={`flex items-start gap-2 text-xs ${r.color}`}>
+          <span>{r.icon}</span><span>{r.text}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -303,6 +340,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [resetting, setResetting] = useState(false)
 
   const fetchStats = async () => {
     try {
@@ -310,6 +348,17 @@ export default function Dashboard() {
       setStats(res.data)
       setLastUpdate(new Date().toLocaleTimeString('en-US'))
     } catch { } finally { setLoading(false) }
+  }
+
+  const handleResetAll = async () => {
+    setResetting(true)
+    try {
+      await chaosClient.reset()         // clear chaos events + restore target
+      toast.success('✓ All chaos cleared — system restored to normal')
+      setTimeout(fetchStats, 800)
+    } catch {
+      toast.error('Reset failed')
+    } finally { setResetting(false) }
   }
 
   useEffect(() => {
@@ -327,8 +376,14 @@ export default function Dashboard() {
             Monitoring <span className="text-indigo-400 font-mono text-xs">target-video-service</span> — refreshes every 10s
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {lastUpdate && <span className="text-gray-600 text-xs">Last: {lastUpdate}</span>}
+          <button
+            onClick={handleResetAll} disabled={resetting}
+            className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/60 text-red-300 rounded-xl text-sm font-medium transition-all border border-red-800/50 disabled:opacity-50"
+          >
+            <RotateCcw size={13} className={resetting ? 'animate-spin' : ''} /> Reset All
+          </button>
           <button onClick={fetchStats} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-sm font-medium transition-all border border-gray-700">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
@@ -343,6 +398,7 @@ export default function Dashboard() {
       </div>
 
       {stats && <HealthBar score={stats.overallHealthScore ?? 0} />}
+      {stats && <HealthExplanation stats={stats} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Target service live status — replaces old "Service Status" box */}
