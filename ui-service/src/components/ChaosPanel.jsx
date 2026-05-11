@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { chaosClient, TARGET_SERVICE_NAME, TARGET_VIDEO_URL } from '../api/apiClient'
 import { useChaosWebSocket } from '../hooks/useChaosWebSocket'
 import toast from 'react-hot-toast'
-import { Skull, Clock, AlertTriangle, Trash2, RefreshCw, Wifi, WifiOff, Zap, Globe, RotateCcw } from 'lucide-react'
+import { Skull, Clock, AlertTriangle, Trash2, RefreshCw, Wifi, WifiOff, Zap, Globe, RotateCcw, Activity } from 'lucide-react'
 
 function ChaosTypeBadge({ type }) {
   const styles = {
@@ -28,11 +28,83 @@ function KillFlash({ show }) {
   )
 }
 
-// Shows current chaos state on the target service (live badge)
+// ── Live response viewer — shows what /api/videos returns right now ────────────
+function LiveResponseViewer() {
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [lastChecked, setLastChecked] = useState(null)
+
+  const check = async () => {
+    setLoading(true)
+    const t0 = Date.now()
+    try {
+      const res = await fetch(`${TARGET_VIDEO_URL}/api/videos`, { signal: AbortSignal.timeout(6000) })
+      const body = await res.json()
+      setResult({ status: res.status, ok: res.ok, latency: Date.now() - t0, body })
+    } catch (e) {
+      setResult({ status: 0, ok: false, latency: Date.now() - t0, body: { error: e.message } })
+    } finally {
+      setLoading(false)
+      setLastChecked(new Date().toLocaleTimeString('en-US'))
+    }
+  }
+
+  useEffect(() => {
+    check()
+    const t = setInterval(check, 5000)
+    return () => clearInterval(t)
+  }, [])
+
+  const statusColor = !result ? 'text-gray-600'
+    : result.status === 200 ? 'text-green-400'
+    : result.status === 503 ? 'text-red-400'
+    : result.status === 500 ? 'text-orange-400'
+    : 'text-amber-400'
+
+  const statusLabel = !result ? '—'
+    : result.status === 0 ? 'UNREACHABLE'
+    : `HTTP ${result.status}`
+
+  return (
+    <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-gray-300 flex items-center gap-2 text-sm">
+          <Activity size={14} className="text-indigo-400" />
+          Live Response — <span className="font-mono text-xs text-gray-500">GET /api/videos</span>
+        </h3>
+        <div className="flex items-center gap-3">
+          {lastChecked && <span className="text-gray-700 text-xs">{lastChecked}</span>}
+          <span className={`font-bold text-sm ${statusColor}`}>{statusLabel}</span>
+          {result && <span className="text-gray-600 text-xs font-mono">{result.latency}ms</span>}
+          <button onClick={check} disabled={loading} className="p-1 hover:bg-gray-800 rounded-lg transition-all">
+            <RefreshCw size={12} className={`text-gray-500 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      <div className={`rounded-xl p-3 font-mono text-xs overflow-auto max-h-32 border ${
+        result?.status === 503 ? 'bg-red-950/20 border-red-900/40 text-red-300'
+        : result?.status === 500 ? 'bg-orange-950/20 border-orange-900/40 text-orange-300'
+        : 'bg-gray-800/50 border-gray-700/50 text-gray-400'
+      }`}>
+        {loading && !result ? (
+          <span className="text-gray-600">Fetching...</span>
+        ) : result ? (
+          <pre className="whitespace-pre-wrap break-all">
+            {JSON.stringify(result.body, null, 2).slice(0, 400)}
+            {JSON.stringify(result.body).length > 400 ? '\n... (truncated)' : ''}
+          </pre>
+        ) : null}
+      </div>
+      <p className="text-xs text-gray-700 mt-2">Auto-refreshes every 5s — stay here to see chaos effects without opening localhost:4000</p>
+    </div>
+  )
+}
+
+// ── Live chaos state badge ────────────────────────────────────────────────────
 function TargetStateBadge({ chaosState }) {
   if (!chaosState || chaosState.error) return null
   const { killed, delayMs, errorRate } = chaosState
-
   if (!killed && !delayMs && !errorRate) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border bg-green-900/30 text-green-300 border-green-700">
@@ -42,21 +114,36 @@ function TargetStateBadge({ chaosState }) {
   }
   return (
     <div className="flex flex-wrap gap-1.5">
-      {killed && (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-red-900/50 text-red-300 border-red-700 animate-pulse">
-          💀 KILLED
-        </span>
-      )}
-      {delayMs > 0 && (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-900/50 text-amber-300 border-amber-700">
-          ⏱ {delayMs}ms delay
-        </span>
-      )}
-      {errorRate > 0 && (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-orange-900/50 text-orange-300 border-orange-700">
-          ⚠️ {errorRate}% errors
-        </span>
-      )}
+      {killed && <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-red-900/50 text-red-300 border-red-700 animate-pulse">💀 KILLED</span>}
+      {delayMs > 0 && <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-900/50 text-amber-300 border-amber-700">⏱ {delayMs}ms delay</span>}
+      {errorRate > 0 && <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-orange-900/50 text-orange-300 border-orange-700">⚠️ {errorRate}% errors</span>}
+    </div>
+  )
+}
+
+// ── Slider with label ─────────────────────────────────────────────────────────
+function ParamSlider({ label, value, onChange, min, max, step = 1, unit, color = 'indigo' }) {
+  const colorMap = {
+    red: 'accent-red-500',
+    amber: 'accent-amber-500',
+    orange: 'accent-orange-500',
+    indigo: 'accent-indigo-500',
+  }
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between items-center mb-1">
+        <label className="text-xs text-gray-500">{label}</label>
+        <span className="text-xs font-mono font-semibold text-gray-300">{value}{unit}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className={`w-full h-1.5 rounded-full bg-gray-700 ${colorMap[color]} cursor-pointer`}
+      />
+      <div className="flex justify-between text-gray-700 text-xs mt-0.5">
+        <span>{min}{unit}</span><span>{max}{unit}</span>
+      </div>
     </div>
   )
 }
@@ -68,7 +155,13 @@ export default function ChaosPanel() {
   const [newEventId, setNewEventId] = useState(null)
   const [chaosState, setChaosState] = useState(null)
 
-  // Poll live chaos state every 4s
+  // Params — user controls these
+  const [killTtl, setKillTtl] = useState(30)
+  const [delayMs, setDelayMs] = useState(2000)
+  const [delayTtl, setDelayTtl] = useState(30)
+  const [errorRate, setErrorRate] = useState(50)
+  const [errorTtl, setErrorTtl] = useState(30)
+
   const fetchChaosState = async () => {
     try {
       const res = await chaosClient.targetStatus()
@@ -87,7 +180,6 @@ export default function ChaosPanel() {
       setKillFlash(true)
       setTimeout(() => setKillFlash(false), 1500)
     }
-    // Refresh chaos state after an event
     setTimeout(fetchChaosState, 800)
   }, [])
 
@@ -97,9 +189,7 @@ export default function ChaosPanel() {
     try {
       const res = await chaosClient.getStatus()
       setEvents([...res.data].reverse())
-    } catch {
-      toast.error('Chaos service unreachable')
-    }
+    } catch { toast.error('Chaos service unreachable') }
   }
 
   useEffect(() => {
@@ -109,23 +199,17 @@ export default function ChaosPanel() {
     return () => clearInterval(t)
   }, [])
 
-  // Always attack target-video-service
   const handleAction = async (type) => {
     setLoading(prev => ({ ...prev, [type]: true }))
-    const labels = {
-      kill:  '💀 Killing target-video-service...',
-      delay: '⏱ Injecting delay into target-video-service...',
-      error: '⚠️ Injecting errors into target-video-service...',
-    }
-    const toastId = toast.loading(labels[type])
+    const toastId = toast.loading(`Injecting ${type} into target-video-service...`)
     try {
       const actions = {
-        kill:  () => chaosClient.killService(TARGET_SERVICE_NAME),
-        delay: () => chaosClient.delayService(TARGET_SERVICE_NAME),
-        error: () => chaosClient.injectError(TARGET_SERVICE_NAME),
+        kill:  () => chaosClient.killService(TARGET_SERVICE_NAME, killTtl),
+        delay: () => chaosClient.delayService(TARGET_SERVICE_NAME, delayMs, delayTtl),
+        error: () => chaosClient.injectError(TARGET_SERVICE_NAME, errorRate, errorTtl),
       }
       const res = await actions[type]()
-      toast.success(res.data.message, { id: toastId })
+      toast.success(res.data.message, { id: toastId, duration: 4000 })
       if (!connected) await fetchEvents()
       setTimeout(fetchChaosState, 600)
     } catch (err) {
@@ -141,9 +225,7 @@ export default function ChaosPanel() {
       setEvents([])
       toast.success('All chaos cleared — target-video-service restored')
       setTimeout(fetchChaosState, 600)
-    } catch {
-      toast.error('Reset failed')
-    }
+    } catch { toast.error('Reset failed') }
   }
 
   return (
@@ -157,21 +239,12 @@ export default function ChaosPanel() {
             <Zap size={22} className="text-red-400" /> Chaos Panel
           </h2>
           <p className="text-gray-500 text-sm mt-1">
-            Injecting failures into{' '}
-            <a
-              href={TARGET_VIDEO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-400 font-mono hover:underline"
-            >
-              target-video-service
-            </a>
+            Real attack injection into{' '}
+            <span className="text-indigo-400 font-mono text-xs">target-video-service</span>
           </p>
         </div>
         <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${
-          connected
-            ? 'bg-green-900/40 text-green-300 border-green-700'
-            : 'bg-gray-800 text-gray-500 border-gray-700'
+          connected ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-gray-800 text-gray-500 border-gray-700'
         }`}>
           {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
           {connected ? 'Live Stream' : 'Connecting...'}
@@ -190,58 +263,76 @@ export default function ChaosPanel() {
         <TargetStateBadge chaosState={chaosState} />
       </div>
 
-      {/* Action buttons — no input needed, target is fixed */}
-      <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5 space-y-4">
-        <p className="text-sm text-gray-400 font-medium">Inject chaos into target-video-service</p>
-
-        <div className="flex flex-wrap gap-3">
-          {/* KILL */}
-          <button
-            className="group relative flex items-center gap-2 px-5 py-2.5 bg-red-700 hover:bg-red-600 active:scale-95 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-900/30"
-            onClick={() => handleAction('kill')}
-            disabled={loading.kill}
-          >
-            <Skull size={16} className="group-hover:animate-bounce" />
-            {loading.kill ? 'Killing...' : 'Kill Service'}
-          </button>
-
-          {/* DELAY */}
-          <button
-            className="flex items-center gap-2 px-5 py-2.5 bg-amber-700 hover:bg-amber-600 active:scale-95 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 shadow-lg shadow-amber-900/30"
-            onClick={() => handleAction('delay')}
-            disabled={loading.delay}
-          >
-            <Clock size={16} />
-            {loading.delay ? 'Injecting...' : 'Inject Delay'}
-          </button>
-
-          {/* ERROR */}
-          <button
-            className="flex items-center gap-2 px-5 py-2.5 bg-orange-700 hover:bg-orange-600 active:scale-95 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 shadow-lg shadow-orange-900/30"
-            onClick={() => handleAction('error')}
-            disabled={loading.error}
-          >
-            <AlertTriangle size={16} />
-            {loading.error ? 'Injecting...' : 'Inject Error'}
-          </button>
-
-          {/* RESTORE */}
-          <button
-            className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg ml-auto"
-            onClick={handleReset}
-          >
-            <RotateCcw size={16} />
-            Restore
-          </button>
+      {/* ── KILL ─────────────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-red-900/30 bg-gray-900/60 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-red-300 flex items-center gap-2 text-sm">
+            <Skull size={15} /> Kill Service
+          </h3>
+          <span className="text-xs text-gray-600">Returns 503 for all requests</span>
         </div>
-
-        <p className="text-xs text-gray-600">
-          💀 <strong className="text-gray-500">Kill</strong> → 503 for 30s ·
-          <strong className="text-gray-500"> Delay</strong> → 1–5s latency ·
-          <strong className="text-gray-500"> Error</strong> → 50–90% error rate ·
-          <strong className="text-gray-500"> Restore</strong> → back to normal
-        </p>
+        <ParamSlider label="Duration (TTL)" value={killTtl} onChange={setKillTtl} min={5} max={120} unit="s" color="red" />
+        <button
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-red-700 hover:bg-red-600 active:scale-95 text-white font-semibold rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-red-900/30"
+          onClick={() => handleAction('kill')} disabled={loading.kill}
+        >
+          <Skull size={16} className={loading.kill ? 'animate-bounce' : ''} />
+          {loading.kill ? 'Killing...' : `Kill for ${killTtl}s`}
+        </button>
       </div>
+
+      {/* ── DELAY ────────────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-amber-900/30 bg-gray-900/60 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-amber-300 flex items-center gap-2 text-sm">
+            <Clock size={15} /> Inject Delay
+          </h3>
+          <span className="text-xs text-gray-600">Slows every request</span>
+        </div>
+        <div className="flex gap-4">
+          <ParamSlider label="Delay" value={delayMs} onChange={setDelayMs} min={100} max={10000} step={100} unit="ms" color="amber" />
+          <ParamSlider label="Duration (TTL)" value={delayTtl} onChange={setDelayTtl} min={5} max={120} unit="s" color="indigo" />
+        </div>
+        <button
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-700 hover:bg-amber-600 active:scale-95 text-white font-semibold rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-amber-900/30"
+          onClick={() => handleAction('delay')} disabled={loading.delay}
+        >
+          <Clock size={16} />
+          {loading.delay ? 'Injecting...' : `Inject ${delayMs}ms for ${delayTtl}s`}
+        </button>
+      </div>
+
+      {/* ── ERROR ────────────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-orange-900/30 bg-gray-900/60 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-orange-300 flex items-center gap-2 text-sm">
+            <AlertTriangle size={15} /> Inject Errors
+          </h3>
+          <span className="text-xs text-gray-600">Random 500 responses</span>
+        </div>
+        <div className="flex gap-4">
+          <ParamSlider label="Error Rate" value={errorRate} onChange={setErrorRate} min={1} max={100} unit="%" color="orange" />
+          <ParamSlider label="Duration (TTL)" value={errorTtl} onChange={setErrorTtl} min={5} max={120} unit="s" color="indigo" />
+        </div>
+        <button
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-700 hover:bg-orange-600 active:scale-95 text-white font-semibold rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-orange-900/30"
+          onClick={() => handleAction('error')} disabled={loading.error}
+        >
+          <AlertTriangle size={16} />
+          {loading.error ? 'Injecting...' : `Inject ${errorRate}% errors for ${errorTtl}s`}
+        </button>
+      </div>
+
+      {/* Restore */}
+      <button
+        className="w-full flex items-center justify-center gap-2 py-2 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-semibold rounded-xl transition-all"
+        onClick={handleReset}
+      >
+        <RotateCcw size={15} /> Restore Normal Operation
+      </button>
+
+      {/* Live response — stays in UI, no need to open localhost:4000 */}
+      <LiveResponseViewer />
 
       {/* Kill cascade warning */}
       {chaosState?.killed && (
@@ -250,8 +341,7 @@ export default function ChaosPanel() {
           <div>
             <p className="text-red-300 font-semibold text-sm">💀 Service Killed — Cascade Failure Active</p>
             <p className="text-red-400/70 text-xs mt-0.5">
-              target-video-service is returning 503 for all requests. The video catalog is down.
-              It will auto-recover in ~30 seconds, or click <strong>Restore</strong>.
+              target-video-service returning 503 for all requests. Auto-recovers after TTL, or click Restore.
             </p>
           </div>
         </div>
@@ -261,26 +351,24 @@ export default function ChaosPanel() {
       <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-300 flex items-center gap-2">
-            Chaos Events
+            Attack History
             <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{events.length}</span>
           </h3>
           <div className="flex gap-2">
-            <button onClick={fetchEvents} className="flex items-center gap-1 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs border border-gray-700 transition-all">
+            <button onClick={fetchEvents} className="flex items-center gap-1 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs border border-gray-700">
               <RefreshCw size={11} /> Refresh
             </button>
             {events.length > 0 && (
-              <button onClick={handleReset} className="flex items-center gap-1 px-2.5 py-1 bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg text-xs border border-red-800 transition-all">
+              <button onClick={handleReset} className="flex items-center gap-1 px-2.5 py-1 bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg text-xs border border-red-800">
                 <Trash2 size={11} /> Clear All
               </button>
             )}
           </div>
         </div>
-
         {events.length === 0 ? (
-          <div className="text-center py-16 text-gray-600">
-            <Skull size={40} className="mx-auto mb-3 opacity-20" />
-            <p className="text-sm">No chaos events yet</p>
-            <p className="text-xs mt-1 text-gray-700">Press Kill, Delay, or Error above to attack the target</p>
+          <div className="text-center py-12 text-gray-600">
+            <Skull size={36} className="mx-auto mb-3 opacity-20" />
+            <p className="text-sm">No attacks yet</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -290,20 +378,15 @@ export default function ChaosPanel() {
                   <th className="text-left pb-3 pr-4">Time</th>
                   <th className="text-left pb-3 pr-4">Type</th>
                   <th className="text-left pb-3 pr-4">Result</th>
-                  <th className="text-left pb-3 pr-4">Duration</th>
+                  <th className="text-left pb-3 pr-4">ms</th>
                   <th className="text-left pb-3">Message</th>
                 </tr>
               </thead>
               <tbody>
                 {events.map(event => (
-                  <tr
-                    key={event.id}
-                    className={`border-b border-gray-800/50 transition-all duration-500 ${
-                      newEventId === event.id
-                        ? 'bg-indigo-900/20 border-indigo-700/30'
-                        : 'hover:bg-gray-800/30'
-                    }`}
-                  >
+                  <tr key={event.id} className={`border-b border-gray-800/50 transition-all duration-500 ${
+                    newEventId === event.id ? 'bg-indigo-900/20' : 'hover:bg-gray-800/30'
+                  }`}>
                     <td className="py-2.5 pr-4 text-gray-500 whitespace-nowrap text-xs font-mono">
                       {new Date(event.timestamp).toLocaleTimeString('en-US')}
                     </td>
@@ -313,7 +396,7 @@ export default function ChaosPanel() {
                         ? <span className="text-green-400 font-semibold text-xs">✓ Hit</span>
                         : <span className="text-red-400 font-semibold text-xs">✗ Miss</span>}
                     </td>
-                    <td className="py-2.5 pr-4 text-gray-500 text-xs font-mono">{event.durationMs}ms</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-xs font-mono">{event.durationMs}</td>
                     <td className="py-2.5 text-gray-500 text-xs max-w-xs truncate">{event.message}</td>
                   </tr>
                 ))}

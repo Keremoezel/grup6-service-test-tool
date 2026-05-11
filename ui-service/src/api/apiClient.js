@@ -12,13 +12,12 @@ const reportApi = axios.create({ baseURL: REPORT_URL })
 
 // --- Chaos API ---
 export const chaosClient = {
-  killService: (name) => chaosApi.post(`/api/chaos/kill/${name}`),
-  delayService: (name) => chaosApi.post(`/api/chaos/delay/${name}`),
-  injectError: (name) => chaosApi.post(`/api/chaos/error/${name}`),
+  killService: (name, ttl = 30) => chaosApi.post(`/api/chaos/kill/${name}?ttl=${ttl}`),
+  delayService: (name, delayMs = 2000, ttl = 30) => chaosApi.post(`/api/chaos/delay/${name}?delayMs=${delayMs}&ttl=${ttl}`),
+  injectError: (name, rate = 50, ttl = 30) => chaosApi.post(`/api/chaos/error/${name}?rate=${rate}&ttl=${ttl}`),
   getStatus: () => chaosApi.get('/api/chaos/status'),
   reset: () => chaosApi.delete('/api/chaos/reset'),
   health: () => chaosApi.get('/api/chaos/health'),
-  // Live chaos state of the target video service (proxied through chaos-service)
   targetStatus: () => chaosApi.get('/api/chaos/target-status'),
 }
 

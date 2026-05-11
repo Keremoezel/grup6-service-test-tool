@@ -27,26 +27,34 @@ public class ChaosController {
      * Belirtilen servisi oldurme simulasyonu
      */
     @PostMapping("/kill/{serviceName}")
-    public ResponseEntity<ChaosResult> killService(@PathVariable String serviceName) {
-        ChaosResult result = chaosService.killService(serviceName);
+    public ResponseEntity<ChaosResult> killService(
+            @PathVariable String serviceName,
+            @RequestParam(defaultValue = "30") int ttl) {
+        ChaosResult result = chaosService.killService(serviceName, ttl);
         return ResponseEntity.ok(result);
     }
 
     /**
-     * Belirtilen servise gecikme ekleme simulasyonu
+     * Belirtilen servise gecikme ekleme
      */
     @PostMapping("/delay/{serviceName}")
-    public ResponseEntity<ChaosResult> delayService(@PathVariable String serviceName) throws InterruptedException {
-        ChaosResult result = chaosService.delayService(serviceName);
+    public ResponseEntity<ChaosResult> delayService(
+            @PathVariable String serviceName,
+            @RequestParam(defaultValue = "2000") int delayMs,
+            @RequestParam(defaultValue = "30") int ttl) throws InterruptedException {
+        ChaosResult result = chaosService.delayService(serviceName, delayMs, ttl);
         return ResponseEntity.ok(result);
     }
 
     /**
-     * Belirtilen servise hata enjeksiyonu simulasyonu
+     * Belirtilen servise hata enjeksiyonu
      */
     @PostMapping("/error/{serviceName}")
-    public ResponseEntity<ChaosResult> injectError(@PathVariable String serviceName) {
-        ChaosResult result = chaosService.injectError(serviceName);
+    public ResponseEntity<ChaosResult> injectError(
+            @PathVariable String serviceName,
+            @RequestParam(defaultValue = "50") int rate,
+            @RequestParam(defaultValue = "30") int ttl) {
+        ChaosResult result = chaosService.injectError(serviceName, rate, ttl);
         return ResponseEntity.ok(result);
     }
 

@@ -57,113 +57,89 @@ public class ChaosService {
     // KILL
     // ─────────────────────────────────────────────────────────────────────────
 
-    public ChaosResult killService(String serviceName) {
+    public ChaosResult killService(String serviceName, int ttl) {
         long start = System.currentTimeMillis();
         boolean success;
         String message;
 
         if (TARGET_VIDEO_SERVICE.equalsIgnoreCase(serviceName)) {
-            // REAL ATTACK — call /api/admin/shutdown on the video service
             try {
-                String url = targetVideoUrl + "/api/admin/shutdown?ttl=" + CHAOS_EXPIRE_SECONDS;
+                String url = targetVideoUrl + "/api/admin/shutdown?ttl=" + ttl;
                 ResponseEntity<Map> resp = restTemplate.postForEntity(url, null, Map.class);
                 success = resp.getStatusCode().is2xxSuccessful();
                 message = success
-                    ? "target-video-service KILLED — returning 503 for " + CHAOS_EXPIRE_SECONDS + "s (real attack)"
+                    ? "target-video-service KILLED — returning 503 for " + ttl + "s (real attack)"
                     : "target-video-service kill failed — HTTP " + resp.getStatusCode();
             } catch (Exception e) {
                 success = false;
                 message = "target-video-service unreachable: " + e.getMessage();
             }
         } else {
-            // SIMULATION — legacy behaviour for other service names
-            success = random.nextInt(100) < 70;
-            message = success
-                ? serviceName + " servisi basariyla durduruldu (simulasyon)"
-                : serviceName + " servisine ulasilamadi, zaten kapali olabilir";
+            // SIMULATION for other services
+            success = true;
+            message = serviceName + " servisi durduruldu (simulasyon, ttl=" + ttl + "s)";
         }
 
-        setChaosMode(serviceName, ChaosType.KILL);
+        setChaosMode(serviceName, ChaosType.KILL, ttl);
         ChaosResult result = save(serviceName, ChaosType.KILL, success, message,
                 System.currentTimeMillis() - start);
         publisher.publish(result);
         return result;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // DELAY
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public ChaosResult delayService(String serviceName) throws InterruptedException {
+    public ChaosResult delayService(String serviceName, int delayMs, int ttl) throws InterruptedException {
         long start = System.currentTimeMillis();
-        int delayMs = 1000 + random.nextInt(4000);   // 1–5 s
         boolean success;
         String message;
 
         if (TARGET_VIDEO_SERVICE.equalsIgnoreCase(serviceName)) {
-            // REAL ATTACK — inject delay into every video service request
             try {
-                String url = targetVideoUrl + "/api/admin/inject-delay?ms=" + delayMs
-                        + "&ttl=" + CHAOS_EXPIRE_SECONDS;
+                String url = targetVideoUrl + "/api/admin/inject-delay?ms=" + delayMs + "&ttl=" + ttl;
                 ResponseEntity<Map> resp = restTemplate.postForEntity(url, null, Map.class);
                 success = resp.getStatusCode().is2xxSuccessful();
                 message = success
-                    ? "target-video-service: " + delayMs + "ms delay injected for " + CHAOS_EXPIRE_SECONDS + "s (real attack)"
+                    ? "target-video-service: " + delayMs + "ms delay injected for " + ttl + "s (real attack)"
                     : "Delay injection failed — HTTP " + resp.getStatusCode();
             } catch (Exception e) {
                 success = false;
                 message = "target-video-service unreachable: " + e.getMessage();
             }
         } else {
-            // SIMULATION
-            Thread.sleep(delayMs);
+            Thread.sleep(Math.min(delayMs, 5000));
             success = true;
-            message = serviceName + " servisine " + delayMs + "ms gecikme eklendi (simulasyon)";
+            message = serviceName + " servisine " + delayMs + "ms gecikme eklendi (simulasyon, ttl=" + ttl + "s)";
         }
 
-        setChaosMode(serviceName, ChaosType.DELAY);
+        setChaosMode(serviceName, ChaosType.DELAY, ttl);
         ChaosResult result = save(serviceName, ChaosType.DELAY, success, message,
                 System.currentTimeMillis() - start);
         publisher.publish(result);
         return result;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ERROR
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public ChaosResult injectError(String serviceName) {
+    public ChaosResult injectError(String serviceName, int rate, int ttl) {
         long start = System.currentTimeMillis();
-        int errorRate = 50 + random.nextInt(40);   // 50–90 %
         boolean success;
         String message;
 
         if (TARGET_VIDEO_SERVICE.equalsIgnoreCase(serviceName)) {
-            // REAL ATTACK — inject error rate into video service
             try {
-                String url = targetVideoUrl + "/api/admin/inject-error?rate=" + errorRate
-                        + "&ttl=" + CHAOS_EXPIRE_SECONDS;
+                String url = targetVideoUrl + "/api/admin/inject-error?rate=" + rate + "&ttl=" + ttl;
                 ResponseEntity<Map> resp = restTemplate.postForEntity(url, null, Map.class);
                 success = resp.getStatusCode().is2xxSuccessful();
                 message = success
-                    ? "target-video-service: " + errorRate + "% error rate injected for " + CHAOS_EXPIRE_SECONDS + "s (real attack)"
+                    ? "target-video-service: " + rate + "% error rate injected for " + ttl + "s (real attack)"
                     : "Error injection failed — HTTP " + resp.getStatusCode();
             } catch (Exception e) {
                 success = false;
                 message = "target-video-service unreachable: " + e.getMessage();
             }
         } else {
-            // SIMULATION
-            String[] errorTypes = {
-                "NullPointerException", "ConnectionTimeoutException",
-                "OutOfMemoryError", "SocketException", "DatabaseConnectionException"
-            };
-            String errorType = errorTypes[random.nextInt(errorTypes.length)];
-            success = false;
-            message = serviceName + " servisinde " + errorType + " hatasi tetiklendi (simulasyon)";
+            success = true;
+            message = serviceName + " servisinde %" + rate + " hata orani tetiklendi (simulasyon, ttl=" + ttl + "s)";
         }
 
-        setChaosMode(serviceName, ChaosType.ERROR);
+        setChaosMode(serviceName, ChaosType.ERROR, ttl);
         ChaosResult result = save(serviceName, ChaosType.ERROR, success, message,
                 System.currentTimeMillis() - start);
         publisher.publish(result);
@@ -215,13 +191,13 @@ public class ChaosService {
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void setChaosMode(String serviceName, ChaosType type) {
+    private void setChaosMode(String serviceName, ChaosType type, int ttlSeconds) {
         LocalDateTime now = LocalDateTime.now();
         ChaosMode mode = ChaosMode.builder()
                 .serviceName(serviceName)
                 .activeType(type)
                 .activatedAt(now)
-                .expiresAt(now.plusSeconds(CHAOS_EXPIRE_SECONDS))
+                .expiresAt(now.plusSeconds(ttlSeconds))
                 .build();
         modeRepository.save(mode);
     }
