@@ -103,12 +103,12 @@ function ScanCard({ scan }) {
 }
 
 export default function SecurityPanel() {
-  const [serviceName, setServiceName] = useState('')
+  const [serviceName, setServiceName] = useState('target-video-service')
   const [scans, setScans] = useState([])
   const [scanning, setScanning] = useState(false)
-  const [sslHost, setSslHost] = useState('')
+  const [sslHost, setSslHost] = useState('localhost')
   const [sslResult, setSslResult] = useState(null)
-  const [portHost, setPortHost] = useState('')
+  const [portHost, setPortHost] = useState('localhost')
   const [portResult, setPortResult] = useState(null)
 
   const fetchScans = async () => {
@@ -161,7 +161,9 @@ export default function SecurityPanel() {
         <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Shield size={22} className="text-indigo-400" /> Security Panel
         </h2>
-        <p className="text-gray-500 text-sm mt-1">Vulnerability scanning and security checks</p>
+        <p className="text-gray-500 text-sm mt-1">
+          Scanning <span className="text-indigo-400 font-mono text-xs">target-video-service</span> for vulnerabilities — OPEN_PORT, WEAK_CONFIG, SSL_ISSUE, AUTH_MISSING
+        </p>
       </div>
 
       {/* Scan */}
@@ -172,7 +174,7 @@ export default function SecurityPanel() {
         <div className="flex gap-3">
           <input
             className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 placeholder-gray-600 transition-all"
-            placeholder="Service name (e.g. api-gateway, auth-service)"
+            placeholder="Service name (e.g. target-video-service)"
             value={serviceName}
             onChange={e => setServiceName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleScan()}
@@ -185,7 +187,7 @@ export default function SecurityPanel() {
             {scanning ? 'Scanning...' : 'Run Scan'}
           </button>
         </div>
-        <p className="text-xs text-gray-600">Checks for OPEN_PORT, WEAK_CONFIG, SSL_ISSUE, AUTH_MISSING · Scores from 0–100</p>
+        <p className="text-xs text-gray-600">Scans for intentional vulnerabilities: wide CORS, exposed /api/debug, weak auth, open ports · Scores 0–100</p>
       </div>
 
       {/* SSL & Port */}
@@ -257,7 +259,7 @@ export default function SecurityPanel() {
           <div className="rounded-2xl border border-gray-800 bg-gray-900/60 text-center py-14 text-gray-600">
             <Shield size={36} className="mx-auto mb-3 opacity-20" />
             <p className="text-sm">No security scans yet</p>
-            <p className="text-xs mt-1 text-gray-700">Enter a service name above and click Run Scan</p>
+            <p className="text-xs mt-1 text-gray-700">Click Run Scan to scan target-video-service</p>
           </div>
         ) : (
           scans.map(scan => <ScanCard key={scan.scanId} scan={scan} />)

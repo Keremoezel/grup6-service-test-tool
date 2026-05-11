@@ -47,6 +47,29 @@ function HealthBar({ score }) {
   )
 }
 
+// ── Small dot for internal services ──────────────────────────────────────────
+function InternalServiceDot({ label, client, port }) {
+  const [status, setStatus] = useState('checking')
+  useEffect(() => {
+    const check = () => client.health()
+      .then(() => setStatus('up'))
+      .catch(() => setStatus('down'))
+    check()
+    const t = setInterval(check, 15000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-gray-800/30">
+      <div className="flex items-center gap-2">
+        <Server size={12} className={status === 'up' ? 'text-gray-500' : 'text-red-500'} />
+        <span className="text-gray-400 text-xs">{label}</span>
+        <span className="text-gray-700 text-xs font-mono">:{port}</span>
+      </div>
+      <span className={`w-2 h-2 rounded-full ${status === 'up' ? 'bg-green-500' : status === 'down' ? 'bg-red-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`} />
+    </div>
+  )
+}
+
 // ── Target Video Service live status card ─────────────────────────────────────
 function TargetServiceStatus() {
   const [data, setData] = useState(null)
@@ -171,6 +194,16 @@ function TargetServiceStatus() {
           <span>Cannot reach target — check if pnpm run dev is running on port 4000</span>
         </div>
       )}
+
+      {/* Internal microservices — shown for project demo purposes */}
+      <div className="mt-4 pt-4 border-t border-gray-800">
+        <p className="text-xs text-gray-600 mb-2 font-mono uppercase tracking-wider">Internal Services</p>
+        <div className="space-y-1.5">
+          <InternalServiceDot label="Chaos Service" client={chaosClient} port="8081" />
+          <InternalServiceDot label="Security Service" client={securityClient} port="8082" />
+          <InternalServiceDot label="Report Service" client={reportClient} port="8083" />
+        </div>
+      </div>
     </div>
   )
 }
