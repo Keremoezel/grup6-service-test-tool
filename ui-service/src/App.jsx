@@ -44,7 +44,7 @@ export default function App() {
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-gray-400 text-sm">Canli</span>
+            <span className="text-gray-400 text-sm">Live</span>
           </div>
         </div>
       </header>
