@@ -41,6 +41,8 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/grup6db
       - SPRING_DATASOURCE_USERNAME=grup6
       - SPRING_DATASOURCE_PASSWORD=grup6pass
+      # target-video-service: host.docker.internal = lokaldeki 4000 portuna ulaşır
+      - TARGET_VIDEO_URL=http://host.docker.internal:4000
     depends_on:
       postgres:
         condition: service_healthy

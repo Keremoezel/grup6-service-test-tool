@@ -86,6 +86,14 @@ public class ChaosController {
     }
 
     /**
+     * target-video-service'in CANLI chaos durumu (gerçek HTTP GET)
+     */
+    @GetMapping("/target-status")
+    public ResponseEntity<Map<String, Object>> targetVideoStatus() {
+        return ResponseEntity.ok(chaosService.getTargetVideoStatus());
+    }
+
+    /**
      * Servis saglik kontrolu
      */
     @GetMapping("/health")
