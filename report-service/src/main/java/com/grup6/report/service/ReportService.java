@@ -43,7 +43,8 @@ public class ReportService {
         List<Map<String, Object>> securityScans = fetchSecurityScans();
 
         ChaosSummary chaosSummary = buildChaosSummary(chaosEvents);
-        SecuritySummary securitySummary = buildSecuritySummary(securityScans);
+        boolean isKilled = isServiceUnderKillChaos("security-service");
+        SecuritySummary securitySummary = buildSecuritySummary(securityScans, isKilled);
 
         int healthScore = calculateHealthScore(chaosSummary, securitySummary);
 
@@ -67,7 +68,8 @@ public class ReportService {
      * Sadece guvenlik ozetini dondurur
      */
     public SecuritySummary getSecuritySummary() {
-        return buildSecuritySummary(fetchSecurityScans());
+        boolean isKilled = isServiceUnderKillChaos("security-service");
+        return buildSecuritySummary(fetchSecurityScans(), isKilled);
     }
 
     /**
@@ -78,11 +80,14 @@ public class ReportService {
         List<Map<String, Object>> securityScans = fetchSecurityScans();
 
         ChaosSummary cs = buildChaosSummary(chaosEvents);
-        SecuritySummary ss = buildSecuritySummary(securityScans);
+        boolean isKilled = isServiceUnderKillChaos("security-service");
+        SecuritySummary ss = buildSecuritySummary(securityScans, isKilled);
 
         return Map.of(
             "chaosTotalEvents", cs.getTotalEvents(),
-            "chaosSuccessRate", cs.getSuccessRate(),
+            "chaosKillCount",   cs.getKillCount(),
+            "chaosErrorCount",  cs.getErrorCount(),
+            "chaosDelayCount",  cs.getDelayCount(),
             "securityTotalScans", ss.getTotalScans(),
             "securityAverageScore", ss.getAverageScore(),
             "criticalVulnerabilities", ss.getCriticalVulnerabilities(),
@@ -173,10 +178,12 @@ public class ReportService {
     }
 
     @SuppressWarnings("unchecked")
-    private SecuritySummary buildSecuritySummary(List<Map<String, Object>> scans) {
+    private SecuritySummary buildSecuritySummary(List<Map<String, Object>> scans, boolean isKilled) {
         int total = scans.size();
 
         int criticalCount = 0;
+        int highCount = 0;
+        int mediumCount = 0;
         double totalScore = 0;
         String mostRiskyService = "N/A";
         int lowestScore = Integer.MAX_VALUE;
@@ -193,9 +200,9 @@ public class ReportService {
 
             List<Map<String, Object>> vulns = (List<Map<String, Object>>) scan.get("vulnerabilities");
             if (vulns != null) {
-                criticalCount += vulns.stream()
-                    .filter(v -> "CRITICAL".equals(v.get("severity")))
-                    .count();
+                criticalCount += vulns.stream().filter(v -> "CRITICAL".equals(v.get("severity"))).count();
+                highCount     += vulns.stream().filter(v -> "HIGH".equals(v.get("severity"))).count();
+                mediumCount   += vulns.stream().filter(v -> "MEDIUM".equals(v.get("severity"))).count();
             }
         }
 
@@ -204,17 +211,23 @@ public class ReportService {
         return SecuritySummary.builder()
                 .totalScans(total)
                 .criticalVulnerabilities(criticalCount)
+                .highVulnerabilities(highCount)
+                .mediumVulnerabilities(mediumCount)
                 .averageScore(avgScore)
                 .mostRiskyService(total > 0 ? mostRiskyService : "N/A")
+                .cascadeFailure(isKilled)
                 .build();
     }
 
     private int calculateHealthScore(ChaosSummary cs, SecuritySummary ss) {
-        double chaosScore = cs.getTotalEvents() > 0 ? cs.getSuccessRate() : 100;
-        double securityScore = ss.getTotalScans() > 0 ? ss.getAverageScore() : 100;
-
-        int criticalPenalty = ss.getCriticalVulnerabilities() * 5;
-        int score = (int) ((chaosScore * 0.4 + securityScore * 0.6) - criticalPenalty);
+        // Penalty-based scoring: start at 100, subtract for each chaos event and vulnerability
+        int score = 100;
+        score -= cs.getKillCount()  * 30;   // Kill injection  → -30 per event
+        score -= cs.getErrorCount() * 20;   // Error injection → -20 per event
+        score -= cs.getDelayCount() * 10;   // Delay injection → -10 per event
+        score -= ss.getCriticalVulnerabilities() * 15; // Critical vuln → -15 each
+        score -= ss.getHighVulnerabilities()     *  8; // High vuln     → -8 each
+        score -= ss.getMediumVulnerabilities()   *  3; // Medium vuln   → -3 each
         return Math.max(0, Math.min(100, score));
     }
 }

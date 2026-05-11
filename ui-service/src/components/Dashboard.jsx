@@ -21,34 +21,32 @@ function StatCard({ title, value, subtitle, colorClass, icon: Icon, alert }) {
   )
 }
 
-// ── Health Score Explanation ─────────────────────────────────────────────────
+// ── Health Score Explanation — only shown when score < 90 ───────────────────
 function HealthExplanation({ stats }) {
   if (!stats) return null
-  const reasons = []
   const score = stats.overallHealthScore ?? 100
+  if (score >= 90) return null   // system is healthy — no explanation needed
+
+  const reasons = []
 
   if ((stats.chaosTotalEvents ?? 0) > 0) {
-    const penalty = Math.min((stats.chaosTotalEvents) * 5, 50)
-    reasons.push({ icon: '💀', text: `${stats.chaosTotalEvents} chaos attack(s) detected — score penalty: -${penalty}pts`, color: 'text-red-400' })
+    const kills  = stats.chaosKillCount  ?? 0
+    const errors = stats.chaosErrorCount ?? 0
+    const delays = stats.chaosDelayCount ?? 0
+    if (kills  > 0) reasons.push({ icon: '💀', text: `${kills} kill injection(s) — penalty: -${kills * 30}pts`, color: 'text-red-400' })
+    if (errors > 0) reasons.push({ icon: '⚠️', text: `${errors} error injection(s) — penalty: -${errors * 20}pts`, color: 'text-orange-400' })
+    if (delays > 0) reasons.push({ icon: '⏱', text: `${delays} delay injection(s) — penalty: -${delays * 10}pts`, color: 'text-amber-400' })
   }
   if ((stats.criticalVulnerabilities ?? 0) > 0) {
     const penalty = stats.criticalVulnerabilities * 15
-    reasons.push({ icon: '⚠️', text: `${stats.criticalVulnerabilities} critical vulnerability found — penalty: -${penalty}pts`, color: 'text-orange-400' })
+    reasons.push({ icon: '🔴', text: `${stats.criticalVulnerabilities} critical vulnerability found — penalty: -${penalty}pts`, color: 'text-red-400' })
   }
-  if ((stats.securityAverageScore ?? 100) < 80) {
-    const deficit = 80 - stats.securityAverageScore
-    reasons.push({ icon: '🔓', text: `Security score ${stats.securityAverageScore}/100 is below threshold (80) — penalty: -${Math.round(deficit * 0.3)}pts`, color: 'text-amber-400' })
-  }
-  if (reasons.length === 0 && score >= 70) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-green-400 px-1">
-        <span>✓</span><span>System operating normally — no active threats detected</span>
-      </div>
-    )
+  if (reasons.length === 0) {
+    reasons.push({ icon: '🔍', text: 'Health score is below 90 — run a fresh security scan to identify issues', color: 'text-gray-400' })
   }
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3 space-y-1.5">
-      <p className="text-xs text-gray-600 uppercase tracking-wider font-mono mb-2">Why is health low?</p>
+      <p className="text-xs text-gray-600 uppercase tracking-wider font-mono mb-2">Why is health below 90?</p>
       {reasons.map((r, i) => (
         <div key={i} className={`flex items-start gap-2 text-xs ${r.color}`}>
           <span>{r.icon}</span><span>{r.text}</span>
@@ -394,23 +392,14 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Chaos Attacks" value={stats?.chaosTotalEvents ?? 0} subtitle="Kill / Delay / Error on target" colorClass="bg-red-900/40 text-red-300" icon={Zap} alert={(stats?.chaosTotalEvents ?? 0) > 5} />
-        <StatCard title="Security Scans" value={stats?.securityTotalScans ?? 0} subtitle="Scans run on target" colorClass="bg-indigo-900/40 text-indigo-300" icon={Shield} />
+        <StatCard title="Chaos Attacks" value={stats?.chaosTotalEvents ?? 0} subtitle="Kill / Delay / Error injected" colorClass="bg-red-900/40 text-red-300" icon={Zap} alert={(stats?.chaosTotalEvents ?? 0) > 5} />
+        <StatCard title="Security Scans" value={stats?.securityTotalScans ?? 0} subtitle="Vulnerability scans run" colorClass="bg-indigo-900/40 text-indigo-300" icon={Shield} />
         <StatCard title="Critical Vulnerabilities" value={stats?.criticalVulnerabilities ?? 0} subtitle="Found in target service" colorClass="bg-orange-900/40 text-orange-300" icon={Activity} alert={(stats?.criticalVulnerabilities ?? 0) > 0} />
-        <StatCard title="Avg. Security Score" value={stats ? `${stats.securityAverageScore}/100` : '—'} subtitle="Higher = safer" colorClass="bg-green-900/40 text-green-300" icon={FileText} />
+        <StatCard title="Avg. Security Score" value={(stats?.securityTotalScans ?? 0) > 0 ? `${stats.securityAverageScore}/100` : '—'} subtitle={(stats?.securityTotalScans ?? 0) > 0 ? 'Higher = safer' : 'No scans yet'} colorClass="bg-green-900/40 text-green-300" icon={FileText} />
       </div>
 
       {stats && <HealthBar score={stats.overallHealthScore ?? 0} />}
       {stats && <HealthExplanation stats={stats} />}
-
-      {/* Big visible Reset All */}
-      <button
-        onClick={handleResetAll} disabled={resetting}
-        className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl border-2 border-red-800/60 bg-red-950/20 hover:bg-red-950/40 text-red-300 font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50"
-      >
-        <RotateCcw size={16} className={resetting ? 'animate-spin' : ''} />
-        {resetting ? 'Resetting...' : '🗑 Reset All — Clear Chaos Events + Scan History'}
-      </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Target service live status — replaces old "Service Status" box */}

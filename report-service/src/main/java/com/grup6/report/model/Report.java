@@ -48,7 +48,10 @@ public class Report {
     public static class SecuritySummary {
         private int totalScans;
         private int criticalVulnerabilities;
+        private int highVulnerabilities;
+        private int mediumVulnerabilities;
         private double averageScore;
         private String mostRiskyService;
+        private boolean cascadeFailure;
     }
 }

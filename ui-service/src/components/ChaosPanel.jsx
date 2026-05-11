@@ -81,22 +81,7 @@ function LiveResponseViewer() {
           </button>
         </div>
       </div>
-
-      <div className={`rounded-xl p-3 font-mono text-xs overflow-auto max-h-32 border ${
-        result?.status === 503 ? 'bg-red-950/20 border-red-900/40 text-red-300'
-        : result?.status === 500 ? 'bg-orange-950/20 border-orange-900/40 text-orange-300'
-        : 'bg-gray-800/50 border-gray-700/50 text-gray-400'
-      }`}>
-        {loading && !result ? (
-          <span className="text-gray-600">Fetching...</span>
-        ) : result ? (
-          <pre className="whitespace-pre-wrap break-all">
-            {JSON.stringify(result.body, null, 2).slice(0, 400)}
-            {JSON.stringify(result.body).length > 400 ? '\n... (truncated)' : ''}
-          </pre>
-        ) : null}
-      </div>
-      <p className="text-xs text-gray-700 mt-2">Auto-refreshes every 5s — stay here to see chaos effects without opening localhost:4000</p>
+      <p className="text-xs text-gray-700 mt-2">Auto-refreshes every 5s — monitoring latency and status codes</p>
     </div>
   )
 }
@@ -308,7 +293,7 @@ export default function ChaosPanel() {
           <h3 className="font-semibold text-orange-300 flex items-center gap-2 text-sm">
             <AlertTriangle size={15} /> Inject Errors
           </h3>
-          <span className="text-xs text-gray-600">Random 500 responses</span>
+          <span className="text-xs text-gray-600">Injects HTTP 500 errors at given rate</span>
         </div>
         <div className="flex gap-4">
           <ParamSlider label="Error Rate" value={errorRate} onChange={setErrorRate} min={1} max={100} unit="%" color="orange" />

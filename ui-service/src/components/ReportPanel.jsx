@@ -119,8 +119,10 @@ export default function ReportPanel() {
                   <p className="text-gray-300 text-sm">{new Date(report.generatedAt).toLocaleString('en-US')}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-xs mb-1">Chaos Success Rate</p>
-                  <p className={`text-xl font-bold ${successRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>{successRate}%</p>
+                  <p className="text-gray-500 text-xs mb-1">Chaos Injection Rate</p>
+                  <p className={`text-xl font-bold ${(report.chaosSummary?.totalEvents ?? 0) === 0 ? 'text-gray-500' : successRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
+                    {(report.chaosSummary?.totalEvents ?? 0) === 0 ? '—' : `${successRate}%`}
+                  </p>
                 </div>
 
                 {criticals > 0 && (
@@ -130,7 +132,7 @@ export default function ReportPanel() {
                   </div>
                 )}
 
-                {report.securitySummary?.totalScans === 0 && (
+                {report.securitySummary?.cascadeFailure && (
                   <div className="col-span-full flex items-center gap-2 bg-amber-950/20 border border-amber-500/30 rounded-xl px-4 py-3">
                     <Activity size={16} className="text-amber-400" />
                     <p className="text-amber-300 text-sm">No security data — security-service may have been killed (cascade failure)</p>

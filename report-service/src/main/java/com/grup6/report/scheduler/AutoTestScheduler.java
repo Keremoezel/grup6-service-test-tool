@@ -26,7 +26,7 @@ public class AutoTestScheduler {
     private String securityServiceUrl;
 
     private static final List<String> TARGET_SERVICES = List.of(
-        "chaos-service", "security-service", "report-service"
+        "target-video-service"
     );
     private static final String[] CHAOS_TYPES = {"kill", "delay", "error"};
 

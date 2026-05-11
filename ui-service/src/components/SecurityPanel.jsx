@@ -324,7 +324,7 @@ export default function SecurityPanel() {
           <Shield size={22} className="text-indigo-400" /> Security Panel
         </h2>
         <p className="text-gray-500 text-sm mt-1">
-          Real HTTP probes + simulated scans on <span className="text-indigo-400 font-mono text-xs">target-video-service</span>
+          Live HTTP probes + CVSS-style vulnerability scoring on <span className="text-indigo-400 font-mono text-xs">target-video-service</span>
         </p>
       </div>
 
@@ -334,17 +334,19 @@ export default function SecurityPanel() {
       {/* ── Simulated scan (security-service) ─────────────────────────────── */}
       <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5 space-y-4">
         <h3 className="font-semibold text-gray-300 flex items-center gap-2 text-sm">
-          <Shield size={15} className="text-indigo-400" /> Deep Scan (security-service)
-          <span className="text-xs text-gray-600 font-normal ml-1">— simulated CVSS-style scoring</span>
+          <Shield size={15} className="text-indigo-400" /> Deep Scan
         </h3>
         <div className="flex gap-3">
-          <input
-            className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 placeholder-gray-600 transition-all"
-            placeholder="Service name (e.g. target-video-service)"
+          <select
+            className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
             value={serviceName}
             onChange={e => setServiceName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleScan()}
-          />
+          >
+            <option value="target-video-service">target-video-service (Primary Target)</option>
+            <option value="chaos-service">chaos-service</option>
+            <option value="security-service">security-service</option>
+            <option value="report-service">report-service</option>
+          </select>
           <button
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all disabled:opacity-50 whitespace-nowrap active:scale-95"
             onClick={handleScan} disabled={scanning}
@@ -412,11 +414,6 @@ export default function SecurityPanel() {
 
       {/* Scan History */}
       <div>
-        {/* Scheduler notice */}
-        <div className="mb-3 rounded-xl border border-amber-900/30 bg-amber-950/10 px-4 py-2 text-xs text-amber-400 flex items-center gap-2">
-          <span>⚠️</span>
-          <span><strong>Auto Test Scheduler</strong> adds new scans on every interval — stop it in Dashboard to prevent accumulation.</span>
-        </div>
 
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-300 flex items-center gap-2">
