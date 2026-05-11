@@ -22,6 +22,15 @@ public class SecurityController {
     }
 
     /**
+     * Tum tarama gecmisini temizle
+     */
+    @DeleteMapping("/scans")
+    public ResponseEntity<Map<String, Object>> deleteAllScans() {
+        long count = securityScanService.deleteAllScans();
+        return ResponseEntity.ok(Map.of("deleted", count, "message", "All scan history cleared"));
+    }
+
+    /**
      * Servis icin tam guvenlik taramasi baslat
      */
     @PostMapping("/scan/{serviceName}")

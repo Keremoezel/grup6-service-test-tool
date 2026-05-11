@@ -87,6 +87,12 @@ public class SecurityScanService {
                 .stream().map(this::toDto).collect(Collectors.toList());
     }
 
+    public long deleteAllScans() {
+        long count = repository.count();
+        repository.deleteAll();
+        return count;
+    }
+
     // --- Mapping ve hesaplama yardimcilari ---
 
     private ScanResult toDto(ScanResultEntity entity) {

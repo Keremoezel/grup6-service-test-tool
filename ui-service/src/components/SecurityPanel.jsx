@@ -262,6 +262,17 @@ export default function SecurityPanel() {
 
   useEffect(() => { fetchScans() }, [])
 
+  const handleClearScans = async () => {
+    const id = toast.loading('Clearing all scan history...')
+    try {
+      await securityClient.clearScans()
+      setScans([])
+      toast.success('✓ All scan history cleared', { id })
+    } catch {
+      toast.error('Clear failed — security service may be down', { id })
+    }
+  }
+
   // De-duplicate: show only latest scan per service name (unless showAllScans)
   const displayedScans = showAllScans
     ? scans
@@ -401,6 +412,12 @@ export default function SecurityPanel() {
 
       {/* Scan History */}
       <div>
+        {/* Scheduler notice */}
+        <div className="mb-3 rounded-xl border border-amber-900/30 bg-amber-950/10 px-4 py-2 text-xs text-amber-400 flex items-center gap-2">
+          <span>⚠️</span>
+          <span><strong>Auto Test Scheduler</strong> adds new scans on every interval — stop it in Dashboard to prevent accumulation.</span>
+        </div>
+
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-300 flex items-center gap-2">
             Scan History
@@ -415,12 +432,20 @@ export default function SecurityPanel() {
                 onClick={() => setShowAllScans(v => !v)}
                 className="flex items-center gap-1 px-2.5 py-1 bg-indigo-900/30 hover:bg-indigo-900/60 text-indigo-300 rounded-lg text-xs border border-indigo-800"
               >
-                {showAllScans ? 'Show Latest' : `Show All (${scans.length})`}
+                {showAllScans ? 'Show Latest Only' : `Show All (${scans.length})`}
               </button>
             )}
             <button onClick={fetchScans} className="flex items-center gap-1 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs border border-gray-700">
               <RefreshCw size={11} /> Refresh
             </button>
+            {scans.length > 0 && (
+              <button
+                onClick={handleClearScans}
+                className="flex items-center gap-1.5 px-3 py-1 bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg text-xs border border-red-800 font-semibold transition-all active:scale-95"
+              >
+                🗑 Clear All ({scans.length})
+              </button>
+            )}
           </div>
         </div>
         {displayedScans.length === 0 ? (

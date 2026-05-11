@@ -26,6 +26,7 @@ export const securityClient = {
   runScan: (name) => securityApi.post(`/api/security/scan/${name}`),
   getScanById: (id) => securityApi.get(`/api/security/scan/${id}`),
   getAllScans: () => securityApi.get('/api/security/scans'),
+  clearScans: () => securityApi.delete('/api/security/scans'),   // ← NEW
   checkSsl: (host) => securityApi.post(`/api/security/check/ssl/${host}`),
   checkPorts: (host) => securityApi.post(`/api/security/check/ports/${host}`),
   health: () => securityApi.get('/api/security/health'),

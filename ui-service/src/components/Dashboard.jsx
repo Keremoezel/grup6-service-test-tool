@@ -353,11 +353,14 @@ export default function Dashboard() {
   const handleResetAll = async () => {
     setResetting(true)
     try {
-      await chaosClient.reset()         // clear chaos events + restore target
-      toast.success('✓ All chaos cleared — system restored to normal')
+      await Promise.all([
+        chaosClient.reset(),          // clear chaos events + restore target service
+        securityClient.clearScans(),  // clear scan history
+      ])
+      toast.success('✓ Full reset done — chaos cleared + scan history deleted')
       setTimeout(fetchStats, 800)
     } catch {
-      toast.error('Reset failed')
+      toast.error('Reset failed — some services may be down')
     } finally { setResetting(false) }
   }
 
@@ -399,6 +402,15 @@ export default function Dashboard() {
 
       {stats && <HealthBar score={stats.overallHealthScore ?? 0} />}
       {stats && <HealthExplanation stats={stats} />}
+
+      {/* Big visible Reset All */}
+      <button
+        onClick={handleResetAll} disabled={resetting}
+        className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl border-2 border-red-800/60 bg-red-950/20 hover:bg-red-950/40 text-red-300 font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50"
+      >
+        <RotateCcw size={16} className={resetting ? 'animate-spin' : ''} />
+        {resetting ? 'Resetting...' : '🗑 Reset All — Clear Chaos Events + Scan History'}
+      </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Target service live status — replaces old "Service Status" box */}
