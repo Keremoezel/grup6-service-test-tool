@@ -1,392 +1,343 @@
-# Service Test Tool
+# 🛠 Grup 6 — Chaos Engineering Test Platform
 
-**Chaos & Security Testing Platform** — A microservices-based platform that simulates Chaos Engineering and Security Monkey patterns to test system resilience and detect vulnerabilities.
-
-> Built with Spring Boot 3, Java 17, React 18, PostgreSQL, WebSocket (STOMP), Docker Compose  
-> Group 6 — University Microservices Assignment
+> A microservice-based chaos engineering dashboard for systematically testing the resilience of the **VOIDSCREEN** target video streaming service. Built as a university project to demonstrate real-world fault injection, security scanning, and automated reporting.
 
 ---
 
-## Architecture
+## 📌 What is this?
+
+This platform lets you **deliberately break things** and observe what happens. You inject chaos into a running service, watch it degrade in real time, and measure how well it recovers. The three backend microservices each handle a distinct concern:
+
+| Service | Responsibility |
+|---------|---------------|
+| `chaos-service` | Injects delays, errors, and kills into the target |
+| `security-service` | Scans the target for vulnerabilities |
+| `report-service` | Aggregates results from both services |
+| `ui-service` | React dashboard to control and observe everything |
+
+---
+
+## 🏗 System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                 Browser  (port 3000)                      │
-│         React + Tailwind CSS + WebSocket (STOMP)          │
-└──────────┬───────────────┬───────────────┬───────────────┘
-           │               │               │
-           ▼               ▼               ▼
-    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-    │    chaos    │ │  security   │ │   report    │
-    │  :8081      │ │   :8082     │ │   :8083     │
-    └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-           │               │               │
-           └───────────────┴───────────────┘
-                           │
-                   ┌───────▼───────┐
-                   │  PostgreSQL   │
-                   │    :5432      │
-                   └───────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                    Docker Network: grup6-network                   │
+│                                                                   │
+│  ┌─────────────┐   ┌──────────────────┐   ┌──────────────────┐  │
+│  │chaos-service│   │ security-service  │   │  report-service  │  │
+│  │  :8081      │   │     :8082         │   │     :8083        │  │
+│  │  Spring Boot│   │  Spring Boot      │   │  Spring Boot     │  │
+│  └──────┬──────┘   └────────┬──────────┘   └────────┬─────────┘  │
+│         │                   │                        │            │
+│         └───────────────────┴────────────────────────┘            │
+│                             │                                     │
+│                    ┌────────▼────────┐                            │
+│                    │   PostgreSQL    │                            │
+│                    │    :5432        │                            │
+│                    └─────────────────┘                            │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │                   ui-service (React)                     │    │
+│  │                       :3001                              │    │
+│  └──────────────────────────────────────────────────────────┘    │
+└───────────────────────────────────────────────────────────────────┘
+          │
+          │ host.docker.internal (bridge to host machine)
+          ▼
+┌─────────────────────────┐
+│  VOIDSCREEN (Nuxt 3)    │  ← The chaos target
+│  localhost:4000         │  ← Must be running separately
+└─────────────────────────┘
 ```
 
-| Service | Port | Description |
-|---|---|---|
-| **chaos-service** | 8081 | Simulates service kill, latency injection, error injection. Broadcasts events via WebSocket. |
-| **security-service** | 8082 | Runs vulnerability scans, SSL checks, port scans. Persists results to PostgreSQL. |
-| **report-service** | 8083 | Aggregates data from both services. Runs auto-scheduled tests. Implements chaos propagation. |
-| **ui-service** | 3000 | React SPA dashboard served by Nginx. |
-
 ---
 
-## Features
-
-- **Real-time WebSocket streaming** — Chaos events appear instantly in the UI without polling (STOMP over SockJS)
-- **PostgreSQL persistence** — All chaos events and security scans survive service restarts
-- **Cascade failure simulation** — Killing `security-service` causes Report to return empty security data, dropping the health score
-- **Auto-scheduled tests** — Configure an interval and the platform runs chaos + security tests automatically
-- **Chaos mode propagation** — Active chaos modes expire after 30 seconds, automatically restoring normal behavior
-- **Security scanning** — Detects OPEN_PORT, WEAK_CONFIG, SSL_ISSUE, AUTH_MISSING with severity levels (CRITICAL / HIGH / MEDIUM / LOW)
-- **Cloud-ready** — `railway.toml` for each Java service, `vercel.json` for the UI
-
----
-
-## Running Locally
+## 🚀 How to Run
 
 ### Prerequisites
+- Docker Desktop (running)
+- The VOIDSCREEN target service running at `localhost:4000` (see its own README)
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and **running**
-- Ports 3000, 5432, 8081, 8082, 8083 must be free
-
-### Start
+### Start everything
 
 ```bash
-git clone <repo-url>
 cd grup6-service-test-tool
-
 docker-compose up --build
 ```
 
-First build takes **5–10 minutes** (Maven downloads dependencies, npm installs packages).  
-Subsequent starts take ~60 seconds.
+This builds and starts **5 containers**:
+- `postgres` — shared database
+- `chaos-service` — :8081
+- `security-service` — :8082
+- `report-service` — :8083
+- `ui-service` — :3001
 
-### Access
+### Open the dashboard
 
-| Service | URL |
-|---|---|
-| Web Dashboard | http://localhost:3000 |
-| Chaos API | http://localhost:8081 |
-| Security API | http://localhost:8082 |
-| Report API | http://localhost:8083 |
+```
+http://localhost:3001
+```
 
-### Stop
+### Stop everything
 
 ```bash
-# Stop containers, keep database data
 docker-compose down
+```
 
-# Stop containers AND wipe database
-docker-compose down -v
+> **Note:** PostgreSQL data persists in a Docker volume. To fully reset including the database, run `docker-compose down -v`.
+
+---
+
+## 🧩 Service Details
+
+### 1. Chaos Service (`:8081`)
+
+The core of the platform. Communicates with the target service's admin endpoints to inject failures.
+
+**What it does:**
+- Sends `POST /api/admin/inject-delay` to slow down the target
+- Sends `POST /api/admin/inject-error` to make the target randomly fail
+- Sends `POST /api/admin/shutdown` to kill the target entirely
+- Polls the target's `/api/health` to track recovery
+- Stores chaos event history in PostgreSQL
+
+**Key API endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/chaos/health` | Chaos service health |
+| `POST /api/chaos/inject` | Inject chaos scenario |
+| `GET /api/chaos/events` | History of all injected chaos |
+| `DELETE /api/chaos/events` | Clear event history |
+| `GET /api/chaos/status` | Current active chaos on target |
+
+**Chaos scenario types:**
+
+| Type | What happens | Why it's useful |
+|------|-------------|-----------------|
+| **DELAY** | Every request to the target waits N ms before responding | Tests timeout handling, latency sensitivity |
+| **ERROR** | A percentage (e.g., 50%) of requests return HTTP 500 | Tests retry logic, partial failure handling |
+| **KILL** | All requests return HTTP 503 Service Unavailable | Tests failover, service discovery, circuit breakers |
+
+**Why percentage-based errors?**
+
+A 50% error rate is fundamentally different from a kill. In real production incidents, services rarely fail completely — they degrade. A database under heavy load might fail 30% of queries. A network partition might drop 40% of packets. Testing partial failure reveals whether your system has:
+
+- **Retry logic**: If the client retries a failed request once, a 50% error rate becomes only 25% visible failure
+- **Circuit breakers**: After N failures, should the client stop trying and fail fast?
+- **Graceful degradation**: Can the UI show partial content instead of a blank screen?
+
+---
+
+### 2. Security Service (`:8082`)
+
+Performs automated security scans against the target service.
+
+**What it does:**
+- Scans the target's HTTP endpoints for common vulnerabilities
+- Checks for missing security headers (CSP, X-Frame-Options, HSTS, etc.)
+- Tests for open admin endpoints without authentication
+- Tests for information disclosure (stack traces in error responses)
+- Assigns a severity level to each finding: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`
+- Stores scan history in PostgreSQL
+
+**Key API endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/security/health` | Security service health |
+| `POST /api/security/scan` | Start a new security scan |
+| `GET /api/security/scans` | Retrieve scan history |
+| `DELETE /api/security/scans` | Clear all scan history |
+
+**Scan findings explained:**
+
+| Finding | Severity | What it means |
+|---------|----------|---------------|
+| Missing `X-Frame-Options` | MEDIUM | The service can be embedded in iframes (clickjacking risk) |
+| Missing `Content-Security-Policy` | HIGH | XSS attacks not mitigated by browser |
+| Open `/api/admin/*` endpoints | HIGH | Admin operations accessible without auth |
+| Stack trace in 500 response | MEDIUM | Internal code structure exposed to attackers |
+| Missing `Strict-Transport-Security` | LOW | HTTPS downgrade attacks possible |
+
+> **Design note:** The target service (VOIDSCREEN) is deliberately insecure. Its `/api/admin/inject-delay`, `/api/admin/inject-error`, and `/api/admin/shutdown` endpoints require no authentication. The security scanner will always flag these as `HIGH` severity findings — this is intentional and demonstrates why chaos engineering targets should never be exposed to the internet.
+
+---
+
+### 3. Report Service (`:8083`)
+
+Aggregates data from the chaos and security services into structured reports.
+
+**What it does:**
+- Fetches chaos event history from `chaos-service`
+- Fetches scan results from `security-service`
+- Computes a **System Health Score** (0–100) based on:
+  - Active chaos scenarios (lowers score)
+  - Recent critical security findings (lowers score)
+  - Service uptime and response time (raises score)
+- Generates summary reports on demand
+
+**Health Score calculation:**
+
+```
+Base score: 100
+- Each KILL event in last 10 minutes:    -30 points
+- Each ERROR injection currently active: -20 points
+- Each DELAY injection currently active: -10 points
+- Each CRITICAL security finding:        -15 points
+- Each HIGH security finding:             -8 points
+- Each MEDIUM security finding:           -3 points
+Minimum score: 0
+```
+
+A score below 50 is shown as `CRITICAL` in the dashboard. Below 75 is `DEGRADED`. Above 90 is `HEALTHY`.
+
+---
+
+### 4. UI Service (`:3001`)
+
+React + Vite dashboard. Single-page application served by Nginx inside Docker.
+
+**Dashboard tabs:**
+
+**📊 Dashboard**
+- System Health Score with real-time gauge
+- Recent chaos events timeline
+- Quick-inject buttons
+- **Reset All** button — clears all chaos events and scan history simultaneously
+
+**⚡ Chaos Panel**
+- Select target service (VOIDSCREEN or internal microservices)
+- Inject delay with custom duration (ms) and TTL (seconds)
+- Inject error with custom rate (%) and TTL
+- Kill the service temporarily
+- View live event log
+
+**🔒 Security Panel**
+- Run a security scan against the target
+- View scan results with severity breakdown
+- **Clear All** button — removes scan history
+- Auto Scheduler — runs scans at configurable intervals
+
+**📈 Report Panel**
+- Download structured HTML/JSON reports
+- View trend graphs (health over time)
+
+---
+
+## ⚙️ Configuration
+
+All configuration is done via environment variables in `docker-compose.yml`.
+
+| Variable | Service | Default | Description |
+|----------|---------|---------|-------------|
+| `TARGET_VIDEO_URL` | chaos-service | `http://host.docker.internal:4000` | URL of the VOIDSCREEN target |
+| `SPRING_DATASOURCE_URL` | all Java services | see docker-compose | PostgreSQL connection string |
+| `CHAOS_SERVICE_URL` | report-service | `http://chaos-service:8081` | Internal service URL |
+| `SECURITY_SERVICE_URL` | report-service | `http://security-service:8082` | Internal service URL |
+| `VITE_CHAOS_URL` | ui-service (build arg) | `http://localhost:8081` | Browser-visible chaos API |
+| `VITE_SECURITY_URL` | ui-service (build arg) | `http://localhost:8082` | Browser-visible security API |
+
+> **Important:** `host.docker.internal` is how Docker containers reach services running on your local machine (outside Docker). This is how `chaos-service` talks to `VOIDSCREEN` running on your host at `:4000`.
+
+---
+
+## 🔄 Typical Workflow
+
+```
+1. Start VOIDSCREEN:    cd target-video-service && pnpm run dev
+2. Start test platform: cd grup6-service-test-tool && docker-compose up --build
+3. Open dashboard:      http://localhost:3001
+4. Open target:         http://localhost:4000
+
+--- Inject chaos ---
+5. Dashboard → Chaos → Select "target-video-service"
+6. Click "Inject Delay" → set 2000ms, TTL 30s → Submit
+7. Switch to http://localhost:4000 → click any video card
+8. Observe: player shows spinner for ~2 seconds before video loads
+9. Dashboard shows chaos pill: "⏱ +2000MS DELAY · 28s"
+
+--- Inject error ---
+10. Dashboard → Chaos → Inject Error → 50% rate, TTL 60s
+11. Click video cards on VOIDSCREEN repeatedly
+12. ~50% of the time: ERR_500 error screen
+13. ~50% of the time: video loads normally
+14. Click RETRY on error screen → may succeed or fail
+
+--- Run security scan ---
+15. Dashboard → Security → "Start Scan"
+16. Wait ~5 seconds for results
+17. Review findings (admin endpoints without auth will be HIGH severity)
+
+--- Reset ---
+18. Dashboard → "🗑 Reset All" button
+19. Clears chaos state + scan history simultaneously
 ```
 
 ---
 
-## API Reference
-
-### Chaos Service — `http://localhost:8081`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/chaos/kill/{serviceName}` | Simulate service kill (70% success rate) |
-| `POST` | `/api/chaos/delay/{serviceName}` | Inject random latency (1–5 seconds) |
-| `POST` | `/api/chaos/error/{serviceName}` | Inject random exception |
-| `GET` | `/api/chaos/status` | List all chaos events (newest first) |
-| `DELETE` | `/api/chaos/reset` | Clear all events and active chaos modes |
-| `GET` | `/api/chaos/mode/{serviceName}` | Query active chaos mode for a service |
-| `GET` | `/api/chaos/health` | Health check |
-
-**Chaos event response schema:**
-```json
-{
-  "id": "uuid",
-  "serviceName": "payment-service",
-  "chaosType": "KILL | DELAY | ERROR",
-  "timestamp": "2024-01-15T14:30:00",
-  "success": true,
-  "message": "Service successfully stopped (simulation)",
-  "durationMs": 142
-}
-```
-
-**Chaos mode response schema:**
-```json
-{
-  "active": true,
-  "serviceName": "security-service",
-  "type": "KILL",
-  "expiresAt": "2024-01-15T14:30:30"
-}
-```
-
----
-
-### Security Service — `http://localhost:8082`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/security/scan/{serviceName}` | Run full vulnerability scan |
-| `GET` | `/api/security/scan/{scanId}` | Fetch scan result by ID |
-| `GET` | `/api/security/scans` | List all scans (newest first) |
-| `POST` | `/api/security/check/ssl/{host}` | Simulate SSL certificate check |
-| `POST` | `/api/security/check/ports/{host}` | Simulate port scan (80, 443, 8080, 3306, 5432) |
-| `GET` | `/api/security/health` | Health check |
-
-**Scan result schema:**
-```json
-{
-  "scanId": "uuid",
-  "serviceName": "user-api",
-  "timestamp": "2024-01-15T14:30:00",
-  "vulnerabilities": [
-    {
-      "type": "OPEN_PORT | WEAK_CONFIG | SSL_ISSUE | AUTH_MISSING",
-      "severity": "LOW | MEDIUM | HIGH | CRITICAL",
-      "description": "MySQL port 3306 exposed",
-      "recommendation": "Block port 3306 with firewall"
-    }
-  ],
-  "overallRisk": "LOW | MEDIUM | HIGH | CRITICAL",
-  "score": 75
-}
-```
-
-Score formula: `100 - Σ(CRITICAL×25 + HIGH×15 + MEDIUM×8 + LOW×3)`, clamped to `[0, 100]`.
-
----
-
-### Report Service — `http://localhost:8083`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/report/summary` | Full aggregated system report |
-| `GET` | `/api/report/chaos` | Chaos events summary only |
-| `GET` | `/api/report/security` | Security scans summary only |
-| `POST` | `/api/report/generate` | Generate a new timestamped report |
-| `GET` | `/api/report/stats` | Key statistics (counts, averages, health score) |
-| `POST` | `/api/scheduler/start?intervalSeconds=60` | Start auto-test scheduler |
-| `POST` | `/api/scheduler/stop` | Stop auto-test scheduler |
-| `GET` | `/api/scheduler/status` | Scheduler state and last run time |
-| `GET` | `/api/report/health` | Health check |
-
-**Overall health score formula:**
-```
-healthScore = (chaosSuccessRate × 0.4) + (avgSecurityScore × 0.6) − (criticalVulns × 5)
-```
-Clamped to `[0, 100]`.
-
----
-
-## Quick API Test (curl)
-
-```bash
-# Trigger a kill event
-curl -X POST http://localhost:8081/api/chaos/kill/payment-service
-
-# Run a security scan
-curl -X POST http://localhost:8082/api/security/scan/user-api
-
-# Check if security-service is under chaos
-curl http://localhost:8081/api/chaos/mode/security-service
-
-# Generate a full report
-curl -X POST http://localhost:8083/api/report/generate
-
-# Start auto-scheduler (every 30 seconds)
-curl -X POST "http://localhost:8083/api/scheduler/start?intervalSeconds=30"
-
-# Stop scheduler
-curl -X POST http://localhost:8083/api/scheduler/stop
-```
-
----
-
-## Cloud Deployment
-
-### Backend — Railway
-
-Each Java service is deployed as a separate Railway service, all sharing one PostgreSQL database.
-
-**Step 1 — Create the project**
-1. Go to [railway.app](https://railway.app) → "New Project"
-2. Click **"Add Service" → "Database" → "PostgreSQL"** — Railway provides the connection string automatically
-
-**Step 2 — Deploy chaos-service**
-1. "Add Service" → "GitHub Repo" → select your repo → set root directory to `chaos-service`
-2. Railway auto-detects `railway.toml` and uses the `Dockerfile`
-3. Set environment variables:
-
-```
-SPRING_DATASOURCE_URL      = jdbc:postgresql://<railway-postgres-host>:<port>/<db>
-SPRING_DATASOURCE_USERNAME = <from Railway PostgreSQL plugin>
-SPRING_DATASOURCE_PASSWORD = <from Railway PostgreSQL plugin>
-```
-
-4. Copy the generated public URL (e.g. `https://chaos-service-xxxx.up.railway.app`)
-
-**Step 3 — Deploy security-service**
-Same as Step 2. Set the same three `SPRING_DATASOURCE_*` variables.
-
-**Step 4 — Deploy report-service**
-Same process, plus two additional variables:
-
-```
-SPRING_DATASOURCE_URL      = <same postgres URL>
-SPRING_DATASOURCE_USERNAME = <same>
-SPRING_DATASOURCE_PASSWORD = <same>
-CHAOS_SERVICE_URL          = https://chaos-service-xxxx.up.railway.app
-SECURITY_SERVICE_URL       = https://security-service-xxxx.up.railway.app
-```
-
----
-
-### Frontend — Vercel
-
-**Step 1** — Push the repo to GitHub (if not already done)
-
-**Step 2** — Go to [vercel.com](https://vercel.com) → "Add New Project" → import your GitHub repo
-
-**Step 3** — Configure:
-- **Root Directory:** `ui-service`
-- **Framework Preset:** Vite (auto-detected via `vercel.json`)
-
-**Step 4** — Add environment variables:
-
-```
-VITE_CHAOS_URL      = https://chaos-service-xxxx.up.railway.app
-VITE_SECURITY_URL   = https://security-service-xxxx.up.railway.app
-VITE_REPORT_URL     = https://report-service-xxxx.up.railway.app
-VITE_CHAOS_WS_URL   = https://chaos-service-xxxx.up.railway.app/ws
-```
-
-**Step 5** — Deploy. Vercel builds `npm run build` and serves the `dist/` folder.
-
-> **Note on CORS:** The Java services allow all origins (`allowedOrigins("*")`), so the Vercel domain will work without additional configuration.
-
----
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 grup6-service-test-tool/
+├── docker-compose.yml
 │
-├── docker-compose.yml              # Orchestrates all 5 containers
-├── README.md
-├── PROJE_REHBERI.md                # Turkish guide for the demo
+├── chaos-service/           # Spring Boot (Java 17)
+│   ├── src/main/java/com/grup6/chaos/
+│   │   ├── controller/      # REST endpoints
+│   │   ├── service/         # Business logic + HTTP calls to target
+│   │   └── entity/          # JPA entities (ChaosEvent)
+│   └── Dockerfile
 │
-├── chaos-service/                  # Spring Boot — port 8081
-│   ├── Dockerfile                  # Multi-stage: Maven build → JRE runtime
-│   ├── railway.toml                # Railway deployment config
-│   ├── pom.xml
-│   └── src/main/java/com/grup6/chaos/
-│       ├── model/
-│       │   ├── ChaosResult.java        # DTO (API response)
-│       │   ├── ChaosEvent.java         # JPA Entity → chaos_events table
-│       │   └── ChaosMode.java          # JPA Entity → chaos_modes table (30s TTL)
-│       ├── repository/                 # Spring Data JPA repositories
-│       ├── service/
-│       │   ├── ChaosService.java       # Business logic + mode management
-│       │   └── ChaosEventPublisher.java # WebSocket broadcast via SimpMessagingTemplate
-│       ├── controller/ChaosController.java
-│       └── config/
-│           ├── CorsConfig.java
-│           └── WebSocketConfig.java    # STOMP broker + SockJS endpoint /ws
+├── security-service/        # Spring Boot (Java 17)
+│   ├── src/main/java/com/grup6/security/
+│   │   ├── controller/      # REST endpoints
+│   │   ├── service/         # Scanner logic
+│   │   └── entity/          # JPA entities (SecurityScan)
+│   └── Dockerfile
 │
-├── security-service/               # Spring Boot — port 8082
-│   ├── Dockerfile
-│   ├── railway.toml
-│   ├── pom.xml
-│   └── src/main/java/com/grup6/security/
-│       ├── model/
-│       │   ├── ScanResult.java             # DTO (API response)
-│       │   ├── ScanResultEntity.java       # JPA Entity → scan_results table
-│       │   └── VulnerabilityEmbeddable.java # @Embeddable → scan_vulnerabilities table
-│       ├── repository/ScanRepository.java
-│       ├── service/SecurityScanService.java
-│       └── controller/SecurityController.java
+├── report-service/          # Spring Boot (Java 17)
+│   ├── src/main/java/com/grup6/report/
+│   │   ├── controller/      # REST endpoints
+│   │   └── service/         # Aggregation + health score
+│   └── Dockerfile
 │
-├── report-service/                 # Spring Boot — port 8083
-│   ├── Dockerfile
-│   ├── railway.toml
-│   ├── pom.xml
-│   └── src/main/java/com/grup6/report/
-│       ├── model/Report.java
-│       ├── service/ReportService.java      # Calls chaos/security; implements cascade failure
-│       ├── controller/
-│       │   ├── ReportController.java
-│       │   └── SchedulerController.java    # /api/scheduler/* endpoints
-│       └── scheduler/
-│           ├── SchedulerConfig.java        # Thread-safe config (AtomicBoolean/Long/Integer)
-│           └── AutoTestScheduler.java      # @Scheduled fixed-delay runner
-│
-└── ui-service/                     # React 18 + Vite 5 — port 3000
-    ├── Dockerfile                  # Multi-stage: Node build → Nginx serve
-    ├── vercel.json                 # Vercel deployment config
-    ├── nginx.conf                  # SPA routing (all routes → index.html)
-    ├── package.json
-    └── src/
-        ├── App.jsx                         # Tab navigation shell
-        ├── api/apiClient.js                # Axios instances + schedulerClient
-        ├── hooks/
-        │   └── useChaosWebSocket.js        # STOMP client hook (auto-reconnect)
-        └── components/
-            ├── Dashboard.jsx               # Stats + health bar + SchedulerControl
-            ├── ChaosPanel.jsx              # Real-time table (WebSocket-driven)
-            ├── SecurityPanel.jsx           # Scan cards + SSL/port tools
-            └── ReportPanel.jsx             # Bar chart + pie chart (Recharts)
+└── ui-service/              # React + Vite
+    ├── src/
+    │   ├── components/
+    │   │   ├── Dashboard.jsx     # Main layout + Reset All
+    │   │   ├── ChaosPanel.jsx    # Chaos injection controls
+    │   │   ├── SecurityPanel.jsx # Scan results + Clear
+    │   │   └── ReportPanel.jsx   # Reports
+    │   └── api/
+    │       └── apiClient.js      # Axios clients for all services
+    └── Dockerfile
 ```
 
 ---
 
-## Technology Stack
+## 🐛 Troubleshooting
 
-| Layer | Technology |
-|---|---|
-| Backend language | Java 17 |
-| Backend framework | Spring Boot 3.2 |
-| ORM | Spring Data JPA + Hibernate |
-| Database | PostgreSQL 16 |
-| Real-time | WebSocket (STOMP) + SockJS |
-| Scheduling | Spring `@Scheduled` |
-| Frontend | React 18 + Vite 5 |
-| Styling | Tailwind CSS 3 |
-| Charts | Recharts 2 |
-| HTTP client (UI) | Axios |
-| WS client (UI) | @stomp/stompjs + sockjs-client |
-| Notifications | react-hot-toast |
-| Icons | lucide-react |
-| Containerization | Docker + Docker Compose |
-| CI/CD (backend) | Railway |
-| CI/CD (frontend) | Vercel |
+**VOIDSCREEN shows "unreachable" in the test tool**
+- Make sure `pnpm run dev` is running in `target-video-service`
+- The target must be on `localhost:4000`
+- Docker uses `host.docker.internal` to reach your host machine — this works automatically on Windows/Mac
 
----
+**Services fail to start (dependency timeout)**
+- PostgreSQL needs ~10 seconds to initialize on first run
+- All Spring Boot services wait for PostgreSQL to be healthy before starting
+- If a service exits with code 137, Docker killed it (likely memory — ensure Docker has 4GB+ RAM)
 
-## Environment Variables Reference
+**"Connection refused" when injecting chaos**
+- The chaos is targeting a service that's not running
+- Check all containers are healthy: `docker-compose ps`
 
-| Variable | Service | Default (local) | Description |
-|---|---|---|---|
-| `SPRING_DATASOURCE_URL` | chaos, security, report | `jdbc:postgresql://localhost:5432/grup6db` | PostgreSQL JDBC URL |
-| `SPRING_DATASOURCE_USERNAME` | chaos, security, report | `grup6` | Database user |
-| `SPRING_DATASOURCE_PASSWORD` | chaos, security, report | `grup6pass` | Database password |
-| `CHAOS_SERVICE_URL` | report | `http://chaos-service:8081` | Chaos service base URL |
-| `SECURITY_SERVICE_URL` | report | `http://security-service:8082` | Security service base URL |
-| `VITE_CHAOS_URL` | ui | `http://localhost:8081` | Chaos REST base URL |
-| `VITE_SECURITY_URL` | ui | `http://localhost:8082` | Security REST base URL |
-| `VITE_REPORT_URL` | ui | `http://localhost:8083` | Report REST base URL |
-| `VITE_CHAOS_WS_URL` | ui | `http://localhost:8081/ws` | WebSocket endpoint |
-
-All Spring Boot variables use `${VAR:default}` syntax — defaults apply when running outside Docker.
+**Reset All doesn't work**
+- Both chaos-service and security-service must be running
+- Check `docker-compose logs chaos-service` for errors
 
 ---
 
-## License
+## 👥 Team — Grup 6
 
-MIT — Free to use for educational purposes.
+Built as a software engineering project demonstrating chaos engineering principles, microservice architecture, and distributed systems resilience testing.
