@@ -112,7 +112,7 @@ services:
         - VITE_CHAOS_WS_URL=http://localhost:8081/ws
     container_name: ui-service
     ports:
-      - "3000:3000"
+      - "3001:3000"
     networks:
       - grup6-network
     depends_on:
