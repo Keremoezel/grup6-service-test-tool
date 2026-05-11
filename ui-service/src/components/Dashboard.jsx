@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { chaosClient, securityClient, reportClient, schedulerClient } from '../api/apiClient'
-import { Activity, Shield, FileText, RefreshCw, Zap, Play, Square, Timer, Server, AlertTriangle } from 'lucide-react'
+import { chaosClient, securityClient, reportClient, schedulerClient, TARGET_VIDEO_URL } from '../api/apiClient'
+import { Activity, Shield, FileText, RefreshCw, Zap, Play, Square, Timer, Server, AlertTriangle, Globe, Skull, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function StatCard({ title, value, subtitle, colorClass, icon: Icon, alert }) {
@@ -47,47 +47,130 @@ function HealthBar({ score }) {
   )
 }
 
-function ServiceStatusDot({ label, client, port }) {
-  const [status, setStatus] = useState('checking')
+// ── Target Video Service live status card ─────────────────────────────────────
+function TargetServiceStatus() {
+  const [data, setData] = useState(null)
+  const [httpStatus, setHttpStatus] = useState('checking') // 'up' | 'down' | 'checking'
 
-  const check = () => {
-    setStatus('checking')
-    client.health()
-      .then(() => setStatus('up'))
-      .catch(() => setStatus('down'))
+  const fetchStatus = async () => {
+    try {
+      const res = await chaosClient.targetStatus()
+      setData(res.data)
+      setHttpStatus(res.data?.error ? 'down' : 'up')
+    } catch {
+      setData(null)
+      setHttpStatus('down')
+    }
   }
 
   useEffect(() => {
-    check()
-    const t = setInterval(check, 15000)
+    fetchStatus()
+    const t = setInterval(fetchStatus, 5000)
     return () => clearInterval(t)
   }, [])
 
-  const isUp = status === 'up'
-  const isDown = status === 'down'
+  const isKilled = data?.killed === true
+  const hasDelay = (data?.delayMs ?? 0) > 0
+  const hasError = (data?.errorRate ?? 0) > 0
+  const chaosActive = isKilled || hasDelay || hasError
+  const isUp = httpStatus === 'up' && !isKilled
 
   return (
-    <div className={`flex items-center justify-between py-3 px-4 rounded-xl border transition-all duration-500 ${
-      isDown ? 'border-red-500/40 bg-red-950/20' : isUp ? 'border-gray-800 bg-gray-800/30' : 'border-gray-800 bg-gray-800/20'
+    <div className={`rounded-2xl border p-5 transition-all duration-500 ${
+      isKilled
+        ? 'border-red-500/60 bg-red-950/20'
+        : chaosActive
+        ? 'border-amber-500/40 bg-amber-950/10'
+        : 'border-gray-800 bg-gray-900/60'
     }`}>
-      <div className="flex items-center gap-3">
-        <Server size={15} className={isDown ? 'text-red-400' : isUp ? 'text-indigo-400' : 'text-gray-600'} />
-        <div>
-          <p className="text-gray-200 text-sm font-medium">{label}</p>
-          <p className="text-gray-600 text-xs">:{port}</p>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-300 flex items-center gap-2">
+          <Globe size={15} className="text-indigo-400" /> Target — VOIDSCREEN
+        </h3>
+        <a
+          href={TARGET_VIDEO_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors"
+        >
+          {TARGET_VIDEO_URL.replace('http://', '')}
+        </a>
+      </div>
+
+      {/* Main status row */}
+      <div className={`flex items-center justify-between py-3 px-4 rounded-xl border mb-3 transition-all duration-500 ${
+        isKilled ? 'border-red-500/40 bg-red-950/20' : 'border-gray-700 bg-gray-800/40'
+      }`}>
+        <div className="flex items-center gap-3">
+          <Server size={15} className={isKilled ? 'text-red-400' : isUp ? 'text-indigo-400' : 'text-gray-600'} />
+          <div>
+            <p className="text-gray-200 text-sm font-medium">target-video-service</p>
+            <p className="text-gray-600 text-xs">Nuxt 3 · Video Streaming Platform</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isKilled && <Skull size={14} className="text-red-400 animate-pulse" />}
+          <span className={`w-2.5 h-2.5 rounded-full ${
+            isKilled ? 'bg-red-500 animate-pulse'
+            : isUp ? 'bg-green-500'
+            : httpStatus === 'checking' ? 'bg-amber-500 animate-pulse'
+            : 'bg-red-500 animate-pulse'
+          }`} />
+          <span className={`text-xs font-semibold ${
+            isKilled ? 'text-red-400'
+            : isUp ? 'text-green-400'
+            : httpStatus === 'checking' ? 'text-amber-400'
+            : 'text-red-400'
+          }`}>
+            {isKilled ? 'KILLED' : isUp ? 'Online' : httpStatus === 'checking' ? 'Checking...' : 'Unreachable'}
+          </span>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        {isDown && <AlertTriangle size={13} className="text-red-400 animate-pulse" />}
-        <span className={`w-2.5 h-2.5 rounded-full ${
-          isUp ? 'bg-green-500' : isDown ? 'bg-red-500 animate-pulse' : 'bg-amber-500 animate-pulse'
-        }`} />
-        <span className={`text-xs font-semibold ${
-          isUp ? 'text-green-400' : isDown ? 'text-red-400' : 'text-amber-400'
-        }`}>
-          {isUp ? 'Online' : isDown ? 'Unreachable' : 'Checking...'}
-        </span>
-      </div>
+
+      {/* Active chaos indicators */}
+      {data && !data.error && (
+        <div className="grid grid-cols-3 gap-2">
+          {/* Delay */}
+          <div className={`rounded-xl px-3 py-2 border text-center transition-all ${
+            hasDelay ? 'border-amber-500/40 bg-amber-950/20' : 'border-gray-800 bg-gray-800/20'
+          }`}>
+            <Clock size={14} className={`mx-auto mb-1 ${hasDelay ? 'text-amber-400' : 'text-gray-700'}`} />
+            <p className={`text-xs font-semibold ${hasDelay ? 'text-amber-300' : 'text-gray-700'}`}>
+              {hasDelay ? `${data.delayMs}ms` : 'No Delay'}
+            </p>
+            <p className="text-gray-700 text-xs">Delay</p>
+          </div>
+          {/* Error Rate */}
+          <div className={`rounded-xl px-3 py-2 border text-center transition-all ${
+            hasError ? 'border-orange-500/40 bg-orange-950/20' : 'border-gray-800 bg-gray-800/20'
+          }`}>
+            <AlertTriangle size={14} className={`mx-auto mb-1 ${hasError ? 'text-orange-400' : 'text-gray-700'}`} />
+            <p className={`text-xs font-semibold ${hasError ? 'text-orange-300' : 'text-gray-700'}`}>
+              {hasError ? `${data.errorRate}%` : '0%'}
+            </p>
+            <p className="text-gray-700 text-xs">Error Rate</p>
+          </div>
+          {/* Kill */}
+          <div className={`rounded-xl px-3 py-2 border text-center transition-all ${
+            isKilled ? 'border-red-500/40 bg-red-950/20' : 'border-gray-800 bg-gray-800/20'
+          }`}>
+            <Skull size={14} className={`mx-auto mb-1 ${isKilled ? 'text-red-400 animate-pulse' : 'text-gray-700'}`} />
+            <p className={`text-xs font-semibold ${isKilled ? 'text-red-300' : 'text-gray-700'}`}>
+              {isKilled ? 'ACTIVE' : 'None'}
+            </p>
+            <p className="text-gray-700 text-xs">Kill</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unreachable fallback */}
+      {(!data || data.error) && (
+        <div className="flex items-center gap-2 text-xs text-red-400/70 mt-1">
+          <AlertTriangle size={12} />
+          <span>Cannot reach target — check if pnpm run dev is running on port 4000</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -176,7 +259,7 @@ function SchedulerControl() {
               ? 'Waiting...'
               : new Date(schedulerStatus.lastRunAt).toLocaleTimeString('en-US')
           }</span></p>
-          <p className="text-indigo-400 animate-pulse">⚡ Chaos + Security tests running automatically...</p>
+          <p className="text-indigo-400 animate-pulse">⚡ Chaos + Security tests running automatically on target-video-service...</p>
         </div>
       )}
     </div>
@@ -207,7 +290,9 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-gray-500 text-sm mt-1">Auto-refreshes every 10 seconds</p>
+          <p className="text-gray-500 text-sm mt-1">
+            Monitoring <span className="text-indigo-400 font-mono text-xs">target-video-service</span> — refreshes every 10s
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdate && <span className="text-gray-600 text-xs">Last: {lastUpdate}</span>}
@@ -218,25 +303,17 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Chaos Events" value={stats?.chaosTotalEvents ?? 0} subtitle="Kill / Delay / Error" colorClass="bg-red-900/40 text-red-300" icon={Zap} alert={(stats?.chaosTotalEvents ?? 0) > 5} />
-        <StatCard title="Security Scans" value={stats?.securityTotalScans ?? 0} subtitle="Total scans run" colorClass="bg-indigo-900/40 text-indigo-300" icon={Shield} />
-        <StatCard title="Critical Vulnerabilities" value={stats?.criticalVulnerabilities ?? 0} subtitle="Across all scans" colorClass="bg-orange-900/40 text-orange-300" icon={Activity} alert={(stats?.criticalVulnerabilities ?? 0) > 0} />
+        <StatCard title="Chaos Attacks" value={stats?.chaosTotalEvents ?? 0} subtitle="Kill / Delay / Error on target" colorClass="bg-red-900/40 text-red-300" icon={Zap} alert={(stats?.chaosTotalEvents ?? 0) > 5} />
+        <StatCard title="Security Scans" value={stats?.securityTotalScans ?? 0} subtitle="Scans run on target" colorClass="bg-indigo-900/40 text-indigo-300" icon={Shield} />
+        <StatCard title="Critical Vulnerabilities" value={stats?.criticalVulnerabilities ?? 0} subtitle="Found in target service" colorClass="bg-orange-900/40 text-orange-300" icon={Activity} alert={(stats?.criticalVulnerabilities ?? 0) > 0} />
         <StatCard title="Avg. Security Score" value={stats ? `${stats.securityAverageScore}/100` : '—'} subtitle="Higher = safer" colorClass="bg-green-900/40 text-green-300" icon={FileText} />
       </div>
 
       {stats && <HealthBar score={stats.overallHealthScore ?? 0} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
-          <h3 className="font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <Server size={15} className="text-indigo-400" /> Service Status
-          </h3>
-          <div className="space-y-2">
-            <ServiceStatusDot label="Chaos Service" client={chaosClient} port="8081" />
-            <ServiceStatusDot label="Security Service" client={securityClient} port="8082" />
-            <ServiceStatusDot label="Report Service" client={reportClient} port="8083" />
-          </div>
-        </div>
+        {/* Target service live status — replaces old "Service Status" box */}
+        <TargetServiceStatus />
         <SchedulerControl />
       </div>
     </div>
