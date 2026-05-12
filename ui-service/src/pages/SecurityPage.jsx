@@ -41,112 +41,6 @@ function FindingItem({ finding }) {
   )
 }
 
-// ─── Live vulnerability probe ─────────────────────────────────────────────────
-function LiveProbeCard() {
-  const [findings, setFindings] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [lastChecked, setLastChecked] = useState(null)
-
-  const probe = async () => {
-    setLoading(true)
-    const results = []
-
-    try {
-      const r = await fetch(`${TARGET_VIDEO_URL}/api/debug`, { signal: AbortSignal.timeout(5000) })
-      if (r.ok) {
-        const body = await r.json()
-        results.push({
-          severity: 'CRITICAL', type: 'AUTH_MISSING', endpoint: '/api/debug', status: r.status,
-          description: 'Debug endpoint is publicly accessible without authentication.',
-          detail: `Exposed: adminSecret=${body.secrets?.adminSecret ?? '?'}, dbPassword=${body.secrets?.dbPassword ?? '?'}`,
-          recommendation: 'Add authentication middleware to /api/debug or remove it in production.',
-        })
-      }
-    } catch {}
-
-    try {
-      const r = await fetch(`${TARGET_VIDEO_URL}/api/videos`, { signal: AbortSignal.timeout(5000) })
-      const cors = r.headers.get('access-control-allow-origin')
-      if (cors === '*') {
-        results.push({
-          severity: 'HIGH', type: 'CORS_OPEN', endpoint: '/api/videos', status: r.status,
-          description: 'API allows cross-origin requests from any domain (Access-Control-Allow-Origin: *).',
-          detail: `Header: Access-Control-Allow-Origin: ${cors}`,
-          recommendation: 'Restrict CORS to specific trusted origins instead of wildcard.',
-        })
-      }
-    } catch {}
-
-    try {
-      const r = await fetch(`${TARGET_VIDEO_URL}/api/health`, { signal: AbortSignal.timeout(5000) })
-      if (r.ok) {
-        const body = await r.json()
-        if (body.chaos !== undefined) {
-          results.push({
-            severity: 'MEDIUM', type: 'INFO_DISCLOSURE', endpoint: '/api/health', status: r.status,
-            description: 'Health endpoint discloses internal chaos state and uptime.',
-            detail: `Exposed: uptime=${body.uptime}, chaos.active=${body.chaos?.active}, killed=${body.chaos?.killed}`,
-            recommendation: 'Remove sensitive internal state from public health endpoints.',
-          })
-        }
-      }
-    } catch {}
-
-    try {
-      const r = await fetch(`${TARGET_VIDEO_URL}/`, { signal: AbortSignal.timeout(5000) })
-      results.push({
-        severity: 'LOW', type: 'OPEN_PORT', endpoint: '/', status: r.status,
-        description: 'Service is publicly reachable on port 4000 with no network-level protection.',
-        detail: `HTTP ${r.status} — Accessible without VPN or firewall`,
-        recommendation: 'In production, restrict direct port access via firewall or load balancer.',
-      })
-    } catch {}
-
-    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
-    setFindings(results.sort((a, b) => order[a.severity] - order[b.severity]))
-    setLastChecked(new Date().toLocaleTimeString('en-US'))
-    setLoading(false)
-  }
-
-  useEffect(() => { probe() }, [])
-
-  const score = findings
-    ? Math.max(0, 100 - findings.reduce((acc, f) => acc + ({ CRITICAL: 40, HIGH: 20, MEDIUM: 10, LOW: 5 }[f.severity] || 0), 0))
-    : null
-
-  return (
-    <Card>
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <p className="text-sm font-semibold text-gray-900 mb-0.5">Live Vulnerability Probe</p>
-          <p className="text-xs text-gray-500 font-mono">{TARGET_VIDEO_URL}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {score !== null && <ScoreRing score={score} size={64} />}
-          <div className="text-right">
-            {lastChecked && <p className="text-[10px] text-gray-400 mb-1.5">{lastChecked}</p>}
-            <Button variant="secondary" size="sm" onClick={probe} loading={loading}>Re-scan</Button>
-          </div>
-        </div>
-      </div>
-
-      {findings === null ? (
-        <div className="flex items-center justify-center py-10 gap-2 text-gray-400 text-sm">
-          <Spinner size={14} color="#9ca3af" /> Running probe…
-        </div>
-      ) : findings.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="text-green-600 text-sm font-medium">Target unreachable — cannot probe</p>
-          <p className="text-xs text-gray-400 mt-1">Make sure pnpm run dev is running on port 4000</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {findings.map((f, i) => <FindingItem key={i} finding={f} />)}
-        </div>
-      )}
-    </Card>
-  )
-}
 
 // ─── Scan card (collapsible) ──────────────────────────────────────────────────
 function ScanCard({ scan }) {
@@ -258,8 +152,6 @@ export default function SecurityPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <LiveProbeCard />
-
       {/* Controls row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Deep scan */}
